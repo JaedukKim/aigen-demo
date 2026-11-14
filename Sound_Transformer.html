@@ -1,0 +1,3725 @@
+<!DOCTYPE html>
+<html lang="ko" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sound Transformer // Acoustic-to-DSP Bridge & Stage Sync</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600;700&family=Pretendard:wght@300;400;500;600;700&display=swap');
+
+    :root {
+      --st-bg: #07090e;
+      --st-panel: rgba(14, 17, 24, 0.88);
+      --st-border: rgba(255, 255, 255, 0.09);
+      --st-accent: #38bdf8;
+      --st-emerald: #10b981;
+      --st-amber: #f59e0b;
+    }
+
+    body {
+      font-family: 'Inter', 'Pretendard', -apple-system, sans-serif;
+      background-color: var(--st-bg);
+      background-image: 
+        radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.08) 0%, transparent 38%),
+        radial-gradient(circle at 88% 12%, rgba(99, 102, 241, 0.07) 0%, transparent 35%),
+        radial-gradient(circle at 50% 90%, rgba(16, 185, 129, 0.05) 0%, transparent 40%),
+        linear-gradient(rgba(255, 255, 255, 0.016) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.016) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 100% 100%, 24px 24px, 24px 24px;
+      color: #e4e4e7;
+      overflow-x: hidden;
+    }
+
+    .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: "tnum" on, "zero" on; }
+
+    /* Open-Source Tweakpane / Radix Dark Studio Panel */
+    .argon-card {
+      background: var(--st-panel);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--st-border);
+      border-radius: 6px;
+      box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+    }
+
+    .argon-card-active {
+      border-color: rgba(56, 189, 248, 0.28);
+      box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.6);
+    }
+
+    /* Tweakpane / Max4Live Style Precision Range Sliders */
+    input[type="range"].argon-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: #181b24;
+      border-radius: 2px;
+      outline: none;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    input[type="range"].argon-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 10px;
+      height: 14px;
+      border-radius: 2px;
+      background: #e4e4e7;
+      cursor: ew-resize;
+      border: 1px solid #09090b;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      transition: background 0.12s ease;
+    }
+    input[type="range"].argon-slider::-webkit-slider-thumb:hover {
+      background: #38bdf8;
+    }
+
+    /* Tweakpane Value Box */
+    .tp-valbox {
+      background: #12151e;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #38bdf8;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070a12; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-sky-500 selection:text-slate-950">
+
+  <!-- TOP TELEMETRY NAVBAR (GitHub Open-Source DSP Workbench Style) -->
+  <header class="sticky top-0 z-50 border-b border-zinc-800/90 bg-[#090b10]/95 backdrop-blur-md px-4 lg:px-6 py-2">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Brand, View Switcher & GitHub Repo Style Breadcrumb -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center bg-[#05070b] p-0.5 rounded border border-zinc-800 mono text-[10.5px]">
+          <span class="px-2.5 py-1 rounded bg-sky-500/20 border border-sky-400/40 text-sky-300 font-semibold flex items-center gap-1.5">
+            <i class="fa-solid fa-sliders text-[9px]"></i>
+            <span>01 · 프로토타입 워크벤치</span>
+          </span>
+          <a href="./3_portfolio_2.html" class="px-2.5 py-1 rounded text-zinc-400 hover:text-emerald-300 hover:bg-zinc-900 transition flex items-center gap-1.5">
+            <i class="fa-solid fa-diagram-project text-[9px]"></i>
+            <span>02 · 시스템 아키텍처 설계도 ↗</span>
+          </a>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="mono font-semibold text-sm tracking-tight text-zinc-100">Sound Transformer</span>
+          <span class="text-zinc-600 mono text-xs">/</span>
+          <span class="mono text-xs text-zinc-400">acoustic-dsp-bridge</span>
+          <span class="mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-800/90 text-zinc-300 border border-zinc-700/70">김재덕 (Jaeduk Kim)</span>
+          <span class="hidden md:inline-flex items-center gap-1 mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/50 text-emerald-400 border border-emerald-800/40">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Max 8 · Librosa · Guardrail Active
+          </span>
+        </div>
+      </div>
+
+      <!-- Real-Time DSP Telemetry & Audio Synth Trigger -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Telemetry Pill -->
+        <div class="hidden xl:flex items-center gap-2 bg-[#0e1118] border border-zinc-800 px-2.5 py-1 rounded mono text-[10.5px] text-zinc-400">
+          <span>SR: <strong class="text-zinc-200">48kHz</strong></span>
+          <span class="text-zinc-700">|</span>
+          <span>MIDI/OSC: <strong class="text-sky-400">127.0.0.1:7400</strong></span>
+        </div>
+
+        <!-- Real-time Web Audio Audition Button (Prominent Highlight for Judges) -->
+        <button id="audioToggleBtn" onclick="toggleAudioSynth()" 
+                class="px-3.5 py-1.5 rounded text-xs font-semibold flex items-center gap-2 transition-all border border-emerald-500/50 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 shadow-sm shadow-emerald-500/10 cursor-pointer">
+          <span id="audioLed" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <i id="audioIcon" class="fa-solid fa-volume-high text-[10px]"></i>
+          <span id="audioBtnText" class="mono text-[11px]">실시간 주법 사운드 시연 (Audition DSP)</span>
+        </button>
+
+        <!-- Direct .maxpat Download Button -->
+        <button onclick="downloadMaxPatch()" 
+                class="px-3 py-1.5 rounded text-xs font-medium flex items-center gap-1.5 bg-sky-500 hover:bg-sky-400 text-zinc-950 font-semibold transition cursor-pointer">
+          <i class="fa-solid fa-download text-[11px]"></i>
+          <span class="mono text-[11px]">Export .maxpat</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- JUDGE QUICK-START & CONTEXT BRIDGE BAR -->
+  <div class="max-w-[1600px] w-full mx-auto px-3 lg:px-4 pt-3">
+    <div class="bg-[#0c1018]/90 border border-sky-500/25 rounded-md px-3.5 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="mono text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30">
+          INTERACTIVE GUIDE
+        </span>
+        <span class="text-zinc-300 text-[11.5px]">
+          1차원 MIDI(0~127)가 담지 못하는 <strong>현대음악 특수 주법의 비정형 음색(Timbre)</strong>을 정량 수치로 추출하여 <strong>Max/MSP 패치(.maxpat)</strong>와 <strong>무대 큐(OSC/DMX)</strong>로 자동 변환합니다.
+        </span>
+      </div>
+      <div class="flex items-center gap-3 mono text-[10.5px] text-zinc-400">
+        <span><strong class="text-sky-400">STEP 1</strong> 좌측 주법 프리셋/XY패드 조작</span>
+        <span class="text-zinc-700">→</span>
+        <span><strong class="text-emerald-400">STEP 2</strong> 상단 [실시간 주법 사운드 시연] 클릭</span>
+        <span class="text-zinc-700">→</span>
+        <span><strong class="text-amber-400">STEP 3</strong> 우측 .maxpat 코드·큐시트 확인</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN WORKBENCH GRID (12 Columns) -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto p-3 lg:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3.5">
+
+    <!-- =====================================================================
+         LEFT COLUMN (4 COLS): ACOUSTIC DESCRIPTOR & TIMBRE SPACE
+         ===================================================================== -->
+    <section class="lg:col-span-4 flex flex-col gap-3.5">
+      
+      <!-- Card 1: IRCAM SOL / Modalys / SuperVP Timbre Presets & 10-Parameter Matrix -->
+      <div class="argon-card p-3.5 flex flex-col gap-2.5">
+        <div class="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-sky-400 text-xs"></i>
+            <h2 class="mono text-xs font-semibold uppercase tracking-wide text-zinc-200">IRCAM Descriptor &amp; Modal Matrix</h2>
+          </div>
+          <span class="mono text-[10px] text-sky-300 bg-sky-950/50 border border-sky-800/50 px-1.5 py-0.5 rounded">ircamdescriptor~ / SOL</span>
+        </div>
+
+        <!-- 6 IRCAM Studio Preset Selector Grid -->
+        <div>
+          <div class="flex items-center justify-between text-[10.5px] text-zinc-400 mb-1.5">
+            <span>IRCAM Studio Online (SOL) · Modalys · SuperVP Profiles</span>
+            <button onclick="toggleAudioSynth()" id="leftAudioQuickBtn" class="mono text-[10px] px-2 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition cursor-pointer flex items-center gap-1">
+              <i class="fa-solid fa-volume-high text-[9px]"></i> <span id="leftAudioQuickText">프리셋 클릭 시 즉시 재생</span>
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5" id="presetContainer">
+            <button onclick="selectPreset('ponticello')" id="btn-ponticello"
+                    class="preset-btn active text-left p-2 rounded border border-sky-500/60 bg-sky-500/10 transition flex flex-col justify-between cursor-pointer">
+              <div class="flex items-center justify-between">
+                <span class="mono text-[11px] font-semibold text-white">Sul Ponticello</span>
+                <span class="mono text-[9px] text-sky-400">SOL #01</span>
+              </div>
+              <span class="text-[9.5px] text-zinc-400 mt-0.5">Bowed bridge glassy harmonics</span>
+            </button>
+
+            <button onclick="selectPreset('breath')" id="btn-breath"
+                    class="preset-btn text-left p-2 rounded border border-zinc-800/90 bg-[#0b0e14] hover:border-zinc-700 transition flex flex-col justify-between cursor-pointer">
+              <div class="flex items-center justify-between">
+                <span class="mono text-[11px] font-semibold text-zinc-200">Aeolian Jet-Whistle</span>
+                <span class="mono text-[9px] text-zinc-500">SOL #02</span>
+              </div>
+              <span class="text-[9.5px] text-zinc-400 mt-0.5">Bass flute bore &amp; pad key-clicks</span>
+            </button>
+
+            <button onclick="selectPreset('multiphonics')" id="btn-multiphonics"
+                    class="preset-btn text-left p-2 rounded border border-zinc-800/90 bg-[#0b0e14] hover:border-zinc-700 transition flex flex-col justify-between cursor-pointer">
+              <div class="flex items-center justify-between">
+                <span class="mono text-[11px] font-semibold text-zinc-200">Reed Multiphonics</span>
+                <span class="mono text-[9px] text-zinc-500">SOL #03</span>
+              </div>
+              <span class="text-[9.5px] text-zinc-400 mt-0.5">Oboe split-spectrum dyad beating</span>
+            </button>
+
+            <button onclick="selectPreset('collegno')" id="btn-collegno"
+                    class="preset-btn text-left p-2 rounded border border-zinc-800/90 bg-[#0b0e14] hover:border-zinc-700 transition flex flex-col justify-between cursor-pointer">
+              <div class="flex items-center justify-between">
+                <span class="mono text-[11px] font-semibold text-zinc-200">Col Legno Ricochet</span>
+                <span class="mono text-[9px] text-zinc-500">MuBu #04</span>
+              </div>
+              <span class="text-[9.5px] text-zinc-400 mt-0.5">Maple bow-stick &amp; stiff-string modes</span>
+            </button>
+
+            <button onclick="selectPreset('modalysbell')" id="btn-modalysbell"
+                    class="preset-btn text-left p-2 rounded border border-zinc-800/90 bg-[#0b0e14] hover:border-zinc-700 transition flex flex-col justify-between cursor-pointer">
+              <div class="flex items-center justify-between">
+                <span class="mono text-[11px] font-semibold text-zinc-200">Modalys Bronze Plate</span>
+                <span class="mono text-[9px] text-zinc-500">MOD #05</span>
+              </div>
+              <span class="text-[9.5px] text-zinc-400 mt-0.5">12-mode inharmonic tam-tam &amp; bell</span>
+            </button>
+
+            <button onclick="selectPreset('supervpfreeze')" id="btn-supervpfreeze"
+                    class="preset-btn text-left p-2 rounded border border-zinc-800/90 bg-[#0b0e14] hover:border-zinc-700 transition flex flex-col justify-between cursor-pointer">
+              <div class="flex items-center justify-between">
+                <span class="mono text-[11px] font-semibold text-zinc-200">SuperVP Freeze</span>
+                <span class="mono text-[9px] text-zinc-500">SVP #06</span>
+              </div>
+              <span class="text-[9.5px] text-zinc-400 mt-0.5">Phase-vocoder C1 spectral partials</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Studio Audition & PCM WAV + WebAudio Hybrid Player Deck -->
+        <div class="bg-[#080b11] border border-emerald-500/35 rounded p-2.5 flex flex-col gap-2 shadow-inner">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <button onclick="toggleAudioSynth()" id="deckPlayBtn"
+                      class="px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold mono text-[10.5px] flex items-center gap-1.5 transition cursor-pointer shadow-sm">
+                <i id="deckPlayIcon" class="fa-solid fa-play text-[9px]"></i>
+                <span id="deckPlayText">주법 음원 재생</span>
+              </button>
+              <button onclick="retriggerPresetAttack()" title="현재 주법 어택부터 다시 재생"
+                      class="px-2 py-1 rounded bg-zinc-800/90 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 mono text-[10px] flex items-center gap-1 transition cursor-pointer">
+                <i class="fa-solid fa-rotate-left text-[9px] text-sky-400"></i>
+                <span>어택 재시작</span>
+              </button>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1 mono text-[9.5px] text-zinc-400">
+                <i class="fa-solid fa-volume-low text-zinc-500"></i>
+                <input type="range" id="masterVolSlider" min="0.05" max="1.00" step="0.01" value="0.90"
+                       oninput="onMasterVolumeChange(this.value)" class="argon-slider w-14">
+              </div>
+              <button onclick="downloadPresetWav()" title="현재 세공된 주법 음원을 16-bit Stereo .WAV 파일로 저장"
+                      class="px-2 py-1 rounded bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/35 mono text-[9.5px] flex items-center gap-1 transition cursor-pointer">
+                <i class="fa-solid fa-file-audio text-[9px]"></i>
+                <span>.WAV</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Real-Time Stereo Peak Level Meter & Active Engine Readout -->
+          <div class="flex items-center gap-2">
+            <span id="deckPresetLabel" class="mono text-[9.5px] text-emerald-300 truncate max-w-[165px]">SOL #01 · Sul Ponticello</span>
+            <div class="flex-1 flex flex-col gap-0.5 bg-[#05070b] p-1 rounded border border-zinc-800/90">
+              <div class="w-full h-1.5 bg-zinc-900 rounded-sm overflow-hidden">
+                <div id="meterBarL" class="h-full w-0 bg-gradient-to-r from-emerald-500 via-sky-400 to-amber-400 transition-all duration-75"></div>
+              </div>
+              <div class="w-full h-1.5 bg-zinc-900 rounded-sm overflow-hidden">
+                <div id="meterBarR" class="h-full w-0 bg-gradient-to-r from-emerald-500 via-sky-400 to-amber-400 transition-all duration-75"></div>
+              </div>
+            </div>
+            <span id="meterDbText" class="mono text-[9.5px] text-zinc-400 w-14 text-right">STANDBY</span>
+          </div>
+          <audio id="studioWavAudio" loop preload="auto" class="hidden"></audio>
+        </div>
+
+        <!-- Interactive 2D Timbre Embedding Space -->
+        <div class="bg-[#090c12] border border-zinc-800/90 rounded p-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="mono text-[10px] text-zinc-400">
+              2D Latent Timbre Space (Centroid × Noisiness)
+            </span>
+            <span id="xyCoordReadout" class="mono text-[10px] text-sky-400">[0.47, 0.74]</span>
+          </div>
+          <div class="relative w-full h-28 rounded-sm border border-zinc-800 overflow-hidden cursor-crosshair">
+            <canvas id="xyPadCanvas" class="w-full h-full block"></canvas>
+            <div class="absolute bottom-1 left-2 mono text-[9px] text-zinc-500 pointer-events-none">X: Spectral Centroid (Hz) →</div>
+            <div class="absolute top-1 left-2 mono text-[9px] text-zinc-500 pointer-events-none">↑ Y: Noisiness / NHR</div>
+          </div>
+        </div>
+
+        <!-- 10 IRCAM / CUIDADO / Spat5 Precision Parameter Controls (2-Col Compact Studio Rack) -->
+        <div class="space-y-2 pt-0.5">
+          <div class="flex items-center justify-between border-b border-zinc-800/70 pb-1">
+            <span class="mono text-[9.5px] font-bold text-sky-400 uppercase tracking-wider">A. Spectral &amp; Timbral Descriptors (ircamdescriptor~)</span>
+            <span class="mono text-[9px] text-zinc-500">6 params</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+            <!-- 1. Spectral Centroid -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">spectral_centroid</span>
+                <span id="valCentroid" class="tp-valbox">5,840 Hz</span>
+              </div>
+              <input type="range" id="paramCentroid" min="400" max="12000" step="20" value="5840" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 2. Spectral Rolloff 95% -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">spectral_rolloff95</span>
+                <span id="valRolloff" class="tp-valbox">11,400 Hz</span>
+              </div>
+              <input type="range" id="paramRolloff" min="1200" max="16000" step="100" value="11400" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 3. Inharmonicity Index -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">inharmonicity_idx</span>
+                <span id="valInharm" class="tp-valbox">0.38</span>
+              </div>
+              <input type="range" id="paramInharm" min="0.00" max="0.95" step="0.01" value="0.38" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 4. Noisiness NHR -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">noisiness_nhr</span>
+                <span id="valNoise" class="tp-valbox">0.74</span>
+              </div>
+              <input type="range" id="paramNoise" min="0.02" max="0.98" step="0.01" value="0.74" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 5. Spectral Flatness -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">wiener_flatness</span>
+                <span id="valFlatness" class="tp-valbox">0.62</span>
+              </div>
+              <input type="range" id="paramFlatness" min="0.05" max="0.95" step="0.01" value="0.62" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 6. Tristimulus Odd/Even Balance -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">tristimulus_bal</span>
+                <span id="valOddEven" class="tp-valbox">+0.20</span>
+              </div>
+              <input type="range" id="paramOddEven" min="-1.00" max="1.00" step="0.05" value="0.20" oninput="onParamChange()" class="argon-slider">
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between border-b border-zinc-800/70 pb-1 pt-1">
+            <span class="mono text-[9.5px] font-bold text-emerald-400 uppercase tracking-wider">B. Modal, Granular &amp; Spat5 Synthesis</span>
+            <span class="mono text-[9px] text-zinc-500">4 params</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-x-3 gap-y-2">
+            <!-- 7. Log Attack Slope / Transient Hardness -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">log_attack_time</span>
+                <span id="valAttack" class="tp-valbox">18 ms</span>
+              </div>
+              <input type="range" id="paramAttack" min="2" max="150" step="1" value="18" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 8. Modal Damping / Decay -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">modal_damping</span>
+                <span id="valDamping" class="tp-valbox">1.85 s</span>
+              </div>
+              <input type="range" id="paramDamping" min="0.20" max="4.50" step="0.05" value="1.85" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 9. MuBu Grain Size -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">mubu_grain_dur</span>
+                <span id="valGrain" class="tp-valbox">42 ms</span>
+              </div>
+              <input type="range" id="paramGrain" min="8" max="220" step="2" value="42" oninput="onParamChange()" class="argon-slider">
+            </div>
+
+            <!-- 10. Spat5 Azimuth & Hall Room -->
+            <div>
+              <div class="flex justify-between items-center text-[10.5px] mb-0.5">
+                <span class="mono text-zinc-300">spat5_spread</span>
+                <span id="valSpread" class="tp-valbox">78°</span>
+              </div>
+              <input type="range" id="paramSpread" min="10" max="180" step="1" value="78" oninput="onParamChange()" class="argon-slider">
+            </div>
+          </div>
+
+          <!-- IRCAM spat5.viewer 8-Channel Spatial & Granular Acoustic Field Display -->
+          <div class="bg-[#06090f] border border-emerald-500/30 rounded p-2 mt-1.5">
+            <div class="flex items-center justify-between mb-1.5 gap-1">
+              <span class="mono text-[9.5px] font-semibold text-emerald-300 flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                spat5.panoramix~ · 8-Ch Ring Array
+              </span>
+              <span id="spatViewerReadout" class="mono text-[9px] text-zinc-400">Spread ±78° · Grain 42ms · RT60 1.85s</span>
+            </div>
+            <div class="relative w-full h-36 rounded-sm border border-zinc-800/90 overflow-hidden bg-[#04060b]">
+              <canvas id="spatSpeakerCanvas" class="w-full h-full block cursor-pointer"></canvas>
+              <div class="absolute bottom-1 left-2 mono text-[8.5px] text-zinc-500 pointer-events-none">Drag: X Azimuth Spread / Y Modal RT60</div>
+            </div>
+            <!-- 8-Channel Octagonal Speaker Array Live Energy Meters -->
+            <div class="grid grid-cols-8 gap-1 mt-1.5 mono text-[8.5px] text-center">
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar0" class="h-full bg-emerald-400 transition-all duration-75" style="width:65%"></div></div>
+                <span class="text-zinc-400">1 FL</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar1" class="h-full bg-emerald-400 transition-all duration-75" style="width:65%"></div></div>
+                <span class="text-zinc-400">2 FR</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar2" class="h-full bg-sky-400 transition-all duration-75" style="width:45%"></div></div>
+                <span class="text-zinc-400">3 SL</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar3" class="h-full bg-sky-400 transition-all duration-75" style="width:45%"></div></div>
+                <span class="text-zinc-400">4 SR</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar4" class="h-full bg-indigo-400 transition-all duration-75" style="width:20%"></div></div>
+                <span class="text-zinc-400">5 RL</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar5" class="h-full bg-indigo-400 transition-all duration-75" style="width:20%"></div></div>
+                <span class="text-zinc-400">6 RR</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar6" class="h-full bg-purple-400 transition-all duration-75" style="width:12%"></div></div>
+                <span class="text-zinc-400">7 BL</span>
+              </div>
+              <div class="bg-[#090d16] rounded px-0.5 py-1 border border-zinc-800/80">
+                <div class="h-1 bg-zinc-900 rounded-sm overflow-hidden mb-0.5"><div id="spkBar7" class="h-full bg-purple-400 transition-all duration-75" style="width:12%"></div></div>
+                <span class="text-zinc-400">8 BR</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 2: DSP Patching Diagnostics, Build Time & Stage Safety Guardrail -->
+      <div class="argon-card p-3.5">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="mono text-[11px] font-semibold uppercase tracking-wide text-zinc-300 flex items-center gap-1.5">
+            <i class="fa-solid fa-shield-halved text-rose-400 text-[10px]"></i>
+            <span>Patch Telemetry &amp; Safety Guardrail</span>
+          </h3>
+          <span id="guardrailBadge" class="mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/60 border border-emerald-700/50 text-emerald-400">
+            ✓ Guardrail Verified
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mono text-[11px] mb-2">
+          <div class="bg-[#090c12] p-2 rounded border border-zinc-800/80">
+            <span class="text-[9px] text-zinc-500 block">MANUAL MAX PATCHING</span>
+            <span class="text-zinc-300 font-semibold">~160 hrs (1-2 mos)</span>
+          </div>
+          <div class="bg-[#090c12] p-2 rounded border border-zinc-800/80">
+            <span class="text-[9px] text-zinc-500 block">SOUND TRANSFORMER</span>
+            <span class="text-sky-400 font-semibold">&lt; 6 hrs (Instant .maxpat)</span>
+          </div>
+        </div>
+
+        <!-- Live Guardrail Status Row (Bridging Q1 Prototype & Q4 Stage AI Agency) -->
+        <div class="bg-[#090c12] p-2 rounded border border-rose-500/25 mono text-[10.5px] mb-2 flex items-center justify-between">
+          <span class="text-rose-300 font-medium">Stage Safety Clamp:</span>
+          <span id="guardrailReadout" class="text-zinc-200">Gain ≤ 0.0 dBFS | Q 5.76 / 18.0 Max</span>
+        </div>
+
+        <div class="text-[11px] text-zinc-400 leading-relaxed bg-[#090c12] p-2 rounded border border-zinc-800/80 mono">
+          Maps acoustic vectors &amp; <span class="text-zinc-200">MIDI/MPE</span> triggers directly to <span class="text-zinc-200">pfft~</span>, <span class="text-zinc-200">mubu.granular~</span>, and <span class="text-zinc-200">QLab/DMX</span> within strict stage safety bounds.
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         CENTER COLUMN (4 COLS): LIVE MAX/MSP 9 TOPOLOGY & STAGE SIMULATOR
+         ===================================================================== -->
+    <section class="lg:col-span-4 flex flex-col gap-3.5">
+      
+      <!-- Card 3: Authentic Cycling '74 Max 9 Patcher Window Preview -->
+      <div class="argon-card p-3 flex flex-col">
+        <div class="flex items-center justify-between pb-2 mb-1.5 border-b border-zinc-800/80">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-diagram-project text-sky-400 text-xs"></i>
+            <h2 class="mono text-xs font-semibold uppercase tracking-wide text-zinc-200">Max/MSP 9 Signal Graph Preview</h2>
+          </div>
+          <span class="mono text-[9.5px] text-sky-300 bg-[#1c212b] border border-zinc-700/80 px-1.5 py-0.5 rounded">Max 9.0.2 · MC Bus</span>
+        </div>
+
+        <!-- Max 9 Patcher Window Chrome -->
+        <div class="rounded border border-zinc-700/80 overflow-hidden shadow-lg bg-[#222327]">
+          <!-- Max 9 Top Toolbar -->
+          <div class="bg-[#1b1c20] border-b border-zinc-700/80 px-2.5 py-1 flex items-center justify-between mono text-[9.5px] text-zinc-300">
+            <div class="flex items-center gap-2">
+              <span class="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#272930] border border-zinc-700/70 text-amber-300" title="Patcher Unlocked">
+                <i class="fa-solid fa-unlock text-[8.5px]"></i>
+                <span class="hidden sm:inline">Unlocked</span>
+              </span>
+              <span class="px-1.5 py-0.5 rounded bg-[#24262c] text-zinc-400" title="Show Patching Grid"><i class="fa-solid fa-border-all text-[9px]"></i></span>
+              <span class="px-1.5 py-0.5 rounded bg-[#24262c] text-zinc-400" title="Inspector"><i class="fa-solid fa-circle-info text-[9px]"></i></span>
+              <span id="maxWindowTabTitle" class="text-zinc-200 font-medium truncate max-w-[155px]">st_ponticello_bridge.maxpat</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="px-1.5 py-0.5 rounded bg-sky-500/15 border border-sky-500/35 text-sky-300 text-[9px]">MC 8-Ch</span>
+              <span id="maxCpuReadout" class="text-zinc-400 text-[9px]">CPU 2.4%</span>
+              <button onclick="toggleAudioSynth()" id="maxDspPill"
+                      class="px-2 py-0.5 rounded bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/30 transition cursor-pointer flex items-center gap-1 text-[9px] font-semibold">
+                <i class="fa-solid fa-power-off text-[8px]"></i>
+                <span id="maxDspText">DSP</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Max 9 Node Patcher Canvas -->
+          <div class="relative w-full h-[285px] bg-[#222327] overflow-hidden">
+            <canvas id="maxGraphCanvas" class="w-full h-full block"></canvas>
+          </div>
+
+          <!-- Max 9 Bottom Patcher Status Bar -->
+          <div class="bg-[#18191d] border-t border-zinc-700/80 px-2.5 py-1 flex items-center justify-between mono text-[9px] text-zinc-400">
+            <span class="flex items-center gap-2">
+              <span class="text-emerald-400">● Overdrive ON</span>
+              <span class="text-zinc-600">|</span>
+              <span>I/O 64 · SigVS 64</span>
+            </span>
+            <span id="maxStatusRight" class="text-sky-300">ircamdescriptor~ → spat5.panoramix~ (8ch)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 4: Centered Multi-Stage FFT Spectrum & Stage Sync Monitor -->
+      <div class="argon-card p-3.5 flex flex-col gap-2.5">
+        <div class="flex items-center justify-between border-b border-zinc-800/80 pb-2">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-chart-area text-emerald-400 text-xs"></i>
+            <h2 class="mono text-xs font-semibold uppercase tracking-wide text-zinc-200">FFT Spectrum &amp; Stage Sync Monitor</h2>
+          </div>
+          <span class="mono text-[10px] text-zinc-400 bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded">OSC / Art-Net DMX</span>
+        </div>
+
+        <!-- Centered High-Resolution FFT Spectrum + Stage Lighting Visualizer -->
+        <div class="relative w-full h-[255px] bg-[#060911] rounded border border-sky-500/25 overflow-hidden shadow-inner">
+          <canvas id="spectrumStageCanvas" class="w-full h-full block"></canvas>
+          <div class="absolute top-2 left-2 flex items-center gap-1.5 pointer-events-none">
+            <span class="mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-950/90 border border-zinc-800 text-sky-400">
+              Centroid: <strong id="hudPeakFreq">5.84 kHz</strong>
+            </span>
+            <span class="mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-950/90 border border-zinc-800 text-amber-400">
+              DMX512: <strong id="hudDmx">212 / 255</strong>
+            </span>
+          </div>
+          <div class="absolute top-2 right-2 flex items-center gap-1.5 pointer-events-none">
+            <span id="hudRolloff" class="mono text-[9.5px] px-1.5 py-0.5 rounded bg-zinc-950/90 border border-zinc-800 text-indigo-300">Rolloff95: 11.4kHz</span>
+          </div>
+        </div>
+
+        <!-- Quantitative Engineer Cue Matrix -->
+        <div class="grid grid-cols-4 gap-1.5 mono text-center">
+          <div class="bg-[#090c12] p-2 rounded border border-zinc-800/90">
+            <span class="text-[9px] text-zinc-500 block">FILTER Q</span>
+            <span id="cueFilterQ" class="text-xs font-semibold text-sky-400">8.42</span>
+          </div>
+          <div class="bg-[#090c12] p-2 rounded border border-zinc-800/90">
+            <span class="text-[9px] text-zinc-500 block">DMX512 CH1</span>
+            <span id="cueDmxVal" class="text-xs font-semibold text-amber-400">212 (83%)</span>
+          </div>
+          <div class="bg-[#090c12] p-2 rounded border border-zinc-800/90">
+            <span class="text-[9px] text-zinc-500 block">GLSL DISP</span>
+            <span id="cueShader" class="text-xs font-semibold text-indigo-400">0.74 disp</span>
+          </div>
+          <div class="bg-[#090c12] p-2 rounded border border-zinc-800/90">
+            <span class="text-[9px] text-zinc-500 block">SPAT5 PAN</span>
+            <span id="cueAzimuth" class="text-xs font-semibold text-emerald-400">±78.0°</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. 3D Holographic Sound-Field & Modal Membrane Visualizer -->
+      <div class="argon-card p-3.5">
+        <div class="flex items-center justify-between border-b border-zinc-800/80 pb-2 mb-2.5">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-cube text-fuchsia-400 text-xs"></i>
+            <h2 class="mono text-xs font-semibold uppercase tracking-wide text-zinc-200">3D Holographic Sound-Field &amp; Modal Mesh</h2>
+          </div>
+          <span id="holo3dBadge" class="mono text-[9px] px-1.5 py-0.5 rounded bg-fuchsia-500/10 text-fuchsia-300 border border-fuchsia-500/20">spat5.hoa.3d~ + jit.gl.mesh</span>
+        </div>
+
+        <div class="relative w-full h-[245px] bg-[#04060b] rounded border border-zinc-800/90 overflow-hidden shadow-inner">
+          <canvas id="holo3dCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+          <div class="absolute top-2 left-2.5 pointer-events-none">
+            <div class="mono text-[9px] text-fuchsia-300/90 uppercase tracking-wider">3D BINAURAL ELEVATION &amp; MODAL SURFACE · DRAG TO ORBIT</div>
+            <div id="holo3dSubText" class="mono text-[10px] text-zinc-400">HRTF Elevation + Early Reflections + Membrane Modes</div>
+          </div>
+          <div class="absolute top-2 right-2.5 pointer-events-none text-right mono text-[9px] space-y-0.5">
+            <div id="holoElevReadout" class="text-sky-400">ELV +24.0°</div>
+            <div id="holoDepthReadout" class="text-emerald-400">3D DEPTH 88%</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-1.5 mt-2 mono text-[9.5px]">
+          <div class="bg-[#090c12] px-2 py-1.5 rounded border border-zinc-800/90 flex items-center justify-between">
+            <span class="text-zinc-500">HRTF CUE</span>
+            <span id="holoBinauralCue" class="text-sky-400 font-semibold">ITD 0.48ms</span>
+          </div>
+          <div class="bg-[#090c12] px-2 py-1.5 rounded border border-zinc-800/90 flex items-center justify-between">
+            <span class="text-zinc-500">HOA / MESH</span>
+            <span id="holoModalOrder" class="text-fuchsia-400 font-semibold">3rd Order</span>
+          </div>
+          <div class="bg-[#090c12] px-2 py-1.5 rounded border border-zinc-800/90 flex items-center justify-between">
+            <span class="text-zinc-500">AIR SHEEN</span>
+            <span id="holoSheenDb" class="text-emerald-400 font-semibold">+3.2 dB</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         RIGHT COLUMN (4 COLS): AUTHENTIC MAX/MSP CODE & CUE GENERATOR
+         ===================================================================== -->
+    <section class="lg:col-span-4 flex flex-col gap-3.5">
+      <div class="argon-card argon-card-active p-3.5 flex flex-col">
+        
+        <!-- Header & Copy Action -->
+        <div class="flex items-center justify-between border-b border-zinc-800/80 pb-2 mb-2.5">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-code text-sky-400 text-xs"></i>
+            <h2 class="mono text-xs font-semibold uppercase tracking-wide text-zinc-200">Patcher & Cue Code Inspector</h2>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="copyCodeToClipboard()" 
+                    class="mono text-[10px] px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i> Copy Buffer
+            </button>
+          </div>
+        </div>
+
+        <!-- Code Format Selector Tabs -->
+        <div class="grid grid-cols-4 gap-1 bg-[#090c12] p-1 rounded border border-zinc-800/90 mb-2.5 mono text-[10px]">
+          <button onclick="switchCodeTab('maxpat')" id="tab-maxpat"
+                  class="code-tab py-1 px-1 rounded bg-zinc-800 text-sky-400 font-semibold transition text-center">
+            .maxpat JSON
+          </button>
+          <button onclick="switchCodeTab('maxscript')" id="tab-maxscript"
+                  class="code-tab py-1 px-1 rounded text-zinc-400 hover:text-zinc-200 transition text-center">
+            thispatcher
+          </button>
+          <button onclick="switchCodeTab('pattr')" id="tab-pattr"
+                  class="code-tab py-1 px-1 rounded text-zinc-400 hover:text-zinc-200 transition text-center">
+            librosa_osc.py
+          </button>
+          <button onclick="switchCodeTab('cuesheet')" id="tab-cuesheet"
+                  class="code-tab py-1 px-1 rounded text-zinc-400 hover:text-zinc-200 transition text-center">
+            stage_cue.txt
+          </button>
+        </div>
+
+        <!-- Tab Contextual Description -->
+        <div id="codeTabDesc" class="text-[11px] text-zinc-400 mb-2 px-2.5 py-1.5 rounded bg-[#090c12] border border-zinc-800 flex items-center justify-between mono">
+          <span>Max 8: File → New From Clipboard (Cmd+Opt+N)</span>
+          <span class="text-[10px] text-sky-400">UTF-8 / JSON</span>
+        </div>
+
+        <!-- Code Editor Viewport (Locked Height so .maxpat JSON never stretches Center Column) -->
+        <div class="relative bg-[#06080c] rounded border border-zinc-800/90 overflow-hidden flex flex-col h-[820px] max-h-[820px]">
+          <div class="flex items-center justify-between px-3 py-1.5 bg-[#0b0e15] border-b border-zinc-800/80 mono text-[10px] text-zinc-400">
+            <span id="codeFilename">st_ponticello_bridge.maxpat</span>
+            <span id="codeLineCount" class="text-zinc-500">Cycling '74 Max 9.0</span>
+          </div>
+          <pre id="codeViewport" class="flex-1 p-3 overflow-y-auto mono text-[11px] leading-relaxed text-zinc-200 select-all"></pre>
+        </div>
+
+        <!-- Bottom Status Bar -->
+        <div class="mt-2.5 px-2.5 py-1.5 rounded bg-[#090c12] border border-zinc-800/90 flex items-center justify-between mono text-[10px] text-zinc-400">
+          <span> Engines: Max/MSP 9 · IRCAM SuperVP · Modalys · Spat5</span>
+          <span class="text-emerald-400">● UDP 7400 READY</span>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- .maxpat Export & Direct Max 8 Bridge Modal -->
+  <div id="maxExportModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="argon-card argon-card-active max-w-xl w-full p-5 border border-zinc-700 shadow-2xl">
+      <div class="flex items-center justify-between border-b border-zinc-800 pb-3 mb-4">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400">
+            <i class="fa-solid fa-file-code text-xs"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white mono">Export Max 8 Patcher (.maxpat)</h3>
+            <p id="exportModalFilename" class="text-[11px] text-sky-400 mono">st_ponticello_bridge.maxpat</p>
+          </div>
+        </div>
+        <button onclick="closeExportModal()" class="text-zinc-400 hover:text-white px-2 py-1 text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div class="p-3 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-200 flex items-start gap-2.5">
+          <i class="fa-solid fa-circle-check text-emerald-400 mt-0.5"></i>
+          <div>
+            <div class="font-bold text-white mb-0.5">1단계 완료: .maxpat 전체 패치 코드가 클립보드에 자동 복사되었습니다!</div>
+            <p class="text-[11px] text-slate-300 leading-relaxed">
+              웹 미리보기(샌드박스) 환경에서는 브라우저 보안 정책상 파일 직접 다운로드가 차단될 수 있습니다. 
+              지금 바로 <strong>Max 8</strong>을 열고 <kbd class="px-1.5 py-0.5 bg-slate-900 border border-slate-700 rounded mono text-cyan-300">File → New From Clipboard</kbd> (<kbd class="mono text-cyan-300">Cmd+Opt+N</kbd> / <kbd class="mono text-cyan-300">Ctrl+Alt+N</kbd>)를 누르면 9개 오브젝트와 패치 선이 즉시 생성됩니다.
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1 mono">
+            <span>생성된 .maxpat 원본 데이터 (전체 선택 후 .maxpat 파일로 저장 가능)</span>
+            <button onclick="copyExportTextarea()" class="text-cyan-400 hover:underline">
+              <i class="fa-regular fa-copy"></i> 다시 복사하기
+            </button>
+          </div>
+          <textarea id="exportModalTextarea" readonly class="w-full h-44 bg-[#05080f] border border-slate-800 rounded-lg p-3 mono text-[10px] text-cyan-100 focus:outline-none focus:border-cyan-500"></textarea>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <a id="directDataUriLink" href="#" download="argon_bridge.maxpat"
+             class="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition border border-slate-700">
+            <i class="fa-solid fa-download"></i> 브라우저 직접 파일 저장 시도 (.maxpat)
+          </a>
+          <button onclick="copyExportTextarea(); closeExportModal();"
+                  class="px-4 py-2 rounded-lg bg-gradient-to-r from-[#5e72e4] to-[#11cdef] text-slate-950 font-bold text-xs transition">
+            클립보드 복사 및 닫기
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification (Replaces native alert) -->
+  <div id="argonToast" class="fixed bottom-5 right-5 z-50 pointer-events-none opacity-0 translate-y-3 transition-all duration-300">
+    <div class="bg-[#0d1526]/95 backdrop-blur-md border border-cyan-500/50 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3">
+      <div class="w-7 h-7 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+        <i class="fa-solid fa-check"></i>
+      </div>
+      <div>
+        <div id="toastTitle" class="text-xs font-bold text-white">클립보드 복사 완료</div>
+        <div id="toastMsg" class="text-[11px] text-slate-300 mono">Max 8에서 'New From Clipboard'로 즉시 붙여넣을 수 있습니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. STATE & 6 IRCAM STUDIO ACOUSTIC / ELECTROACOUSTIC PRESET DEFINITIONS
+    // =========================================================================
+    const PRESETS = {
+      ponticello: {
+        name: "Sul Ponticello Estremo (IRCAM SOL Violin)",
+        centroid: 5840,
+        rolloff: 11400,
+        inharm: 0.38,
+        noise: 0.74,
+        flatness: 0.62,
+        oddEven: 0.20,
+        attack: 18,
+        damping: 1.85,
+        grain: 42,
+        spread: 78,
+        pfftPatch: "ircam.supervp.trans~",
+        windowSize: 4096
+      },
+      breath: {
+        name: "Aeolian Jet-Whistle & Key-Click (IRCAM SOL Bass Flute)",
+        centroid: 2180,
+        rolloff: 7800,
+        inharm: 0.14,
+        noise: 0.84,
+        flatness: 0.68,
+        oddEven: -0.45,
+        attack: 34,
+        damping: 1.40,
+        grain: 68,
+        spread: 115,
+        pfftPatch: "ircam.modalys.flute~",
+        windowSize: 2048
+      },
+      multiphonics: {
+        name: "Split-Spectrum Multiphonics (IRCAM SOL Oboe/Clarinet)",
+        centroid: 3480,
+        rolloff: 9200,
+        inharm: 0.64,
+        noise: 0.36,
+        flatness: 0.29,
+        oddEven: -0.60,
+        attack: 28,
+        damping: 2.30,
+        grain: 95,
+        spread: 54,
+        pfftPatch: "chordal.inharmonic.pfft~",
+        windowSize: 8192
+      },
+      collegno: {
+        name: "Col Legno Battuto & Ricochet (IRCAM MuBu Granular)",
+        centroid: 7420,
+        rolloff: 13800,
+        inharm: 0.52,
+        noise: 0.91,
+        flatness: 0.76,
+        oddEven: 0.35,
+        attack: 4,
+        damping: 0.65,
+        grain: 18,
+        spread: 142,
+        pfftPatch: "mubu.concat.trans~",
+        windowSize: 1024
+      },
+      modalysbell: {
+        name: "Bronze Plate & Tam-Tam Resonance (IRCAM Modalys)",
+        centroid: 4120,
+        rolloff: 12600,
+        inharm: 0.78,
+        noise: 0.44,
+        flatness: 0.32,
+        oddEven: 0.10,
+        attack: 8,
+        damping: 3.80,
+        grain: 110,
+        spread: 156,
+        pfftPatch: "modalys.plate.res~",
+        windowSize: 8192
+      },
+      supervpfreeze: {
+        name: "Phase-Vocoder C1 Spectral Freeze (IRCAM SuperVP)",
+        centroid: 4680,
+        rolloff: 14200,
+        inharm: 0.08,
+        noise: 0.28,
+        flatness: 0.18,
+        oddEven: 0.50,
+        attack: 65,
+        damping: 4.10,
+        grain: 145,
+        spread: 168,
+        pfftPatch: "supervp.scrub.freeze~",
+        windowSize: 8192
+      }
+    };
+
+    let state = {
+      activePreset: 'ponticello',
+      activeTab: 'maxpat',
+      centroid: 5840,
+      rolloff: 11400,
+      inharm: 0.38,
+      noise: 0.74,
+      flatness: 0.62,
+      oddEven: 0.20,
+      attack: 18,
+      damping: 1.85,
+      grain: 42,
+      spread: 78,
+      pfftPatch: "ircam.supervp.trans~",
+      windowSize: 4096,
+      animPhase: 0
+    };
+
+    // =========================================================================
+    // 2. IRCAM STUDIO-GRADE HYBRID AUDIO ENGINE
+    //    (Sample-Accurate Physical Modeling PCM WAV + Real-Time WebAudio DSP)
+    // =========================================================================
+    const SYNTH_SR = 44100;
+    const SYNTH_DURATION = 3.6;
+
+    let audioCtx = null;
+    let isPlayingAudio = false;
+    let userManuallyStopped = false;
+    let masterVolume = 0.90;
+    let playbackStartTime = 0;
+
+    // Live WebAudio Real-Time Filter & Spatial Nodes
+    let webAudioNodes = null;
+    let currentBufferSource = null;
+    let currentRenderedBuffer = null;
+    let currentWavDataUri = null;
+    let regenTimeoutId = null;
+
+    // Pre-cached default preset buffers for 0ms instant switching
+    const presetCache = {};
+
+    const PRESET_SHORT_LABELS = {
+      ponticello: "SOL #01 · Sul Ponticello",
+      breath: "SOL #02 · Aeolian Jet-Whistle",
+      multiphonics: "SOL #03 · Reed Multiphonics",
+      collegno: "MuBu #04 · Col Legno Ricochet",
+      modalysbell: "MOD #05 · Modalys Bronze Plate",
+      supervpfreeze: "SVP #06 · SuperVP Freeze"
+    };
+
+    const SIN_LUT = new Float32Array(65536);
+    for (let _i = 0; _i < 65536; _i++) {
+      SIN_LUT[_i] = Math.sin((_i * 6.283185307179586) / 65536);
+    }
+    function fastSin(rad) {
+      return SIN_LUT[Math.floor(rad * 10430.378350470453) & 65535];
+    }
+    function fastCos(rad) {
+      return SIN_LUT[(Math.floor(rad * 10430.378350470453) + 16384) & 65535];
+    }
+
+    function synthesizePresetBuffer(presetKey, params) {
+      const numSamples = Math.floor(SYNTH_SR * SYNTH_DURATION);
+      const left = new Float32Array(numSamples);
+      const right = new Float32Array(numSamples);
+
+      const centroidNorm = Math.max(0, Math.min(1, (params.centroid - 400) / 11600));
+      const rolloffHz = Math.max(800, Math.min(18000, params.rolloff || 11400));
+      const inharm = params.inharm;
+      const noiseAmt = params.noise;
+      const flatness = params.flatness;
+      const oddEven = params.oddEven;
+      const attackMs = Math.max(2, params.attack || 18);
+      const attackSec = Math.max(0.002, attackMs / 1000);
+      const damping = Math.max(0.2, params.damping || 1.85);
+      const dampingNorm = Math.max(0, Math.min(1, (damping - 0.20) / 4.30));
+      const grainMs = Math.max(8, params.grain || 42);
+      const grainSec = grainMs / 1000;
+      const spreadNorm = Math.max(0, Math.min(1, (params.spread - 10) / 170));
+
+      let seed = 133742;
+      const rand = () => {
+        seed = (seed * 1664525 + 1013904223) >>> 0;
+        return (seed / 2147483648.0) - 1.0;
+      };
+
+      const twoPi = 2 * Math.PI;
+      const invSR = 1.0 / SYNTH_SR;
+
+      if (presetKey === 'ponticello') {
+        // [SOL #01] Sul Ponticello Estremo (IRCAM SOL Violin)
+        // 22 Glassy Overtones + Helmholtz ALF subharmonic grit + 5 Violin Body/Bridge-Hill Formants + Multi-Bow Phrases
+        const f0_A = 293.66 * (0.86 + centroidNorm * 0.34);
+        const f0_B = f0_A * 1.4983;
+        const P = 22;
+
+        const baseAmp = new Float32Array(P);
+        const panL = new Float32Array(P);
+        const panR = new Float32Array(P);
+        const dPhaseA = new Float32Array(P);
+        const dPhaseB = new Float32Array(P);
+        const phasesA = new Float32Array(P);
+        const phasesB = new Float32Array(P);
+        const shimmerRate = new Float32Array(P);
+
+        for (let p = 0; p < P; p++) {
+          const n = p + 1;
+          const pontCurve = n <= 2
+            ? (0.14 * (1 - centroidNorm * 0.72))
+            : Math.exp(-Math.pow((n - (5.5 + centroidNorm * 10.5)) / (4.5 + flatness * 4.0), 2));
+          const isEven = (n % 2 === 0);
+          const oeWeight = Math.max(0.15, isEven ? (1 + oddEven * 0.68) : (1 - oddEven * 0.68));
+          baseAmp[p] = pontCurve * oeWeight * (0.19 / Math.pow(n, 0.22));
+
+          const stretch = Math.sqrt(1 + inharm * 0.0042 * n * n);
+          const fA = Math.min(16500, f0_A * n * stretch);
+          const fB = Math.min(16500, f0_B * n * stretch);
+          dPhaseA[p] = twoPi * fA * invSR;
+          dPhaseB[p] = twoPi * fB * invSR;
+          phasesA[p] = p * 0.71;
+          phasesB[p] = p * 1.13;
+          shimmerRate[p] = twoPi * (0.48 + p * 0.27);
+
+          const pan = ((p % 2 === 0 ? 1 : -1) * ((p + 1) / P)) * (0.15 + spreadNorm * 0.85);
+          panL[p] = 0.5 - pan * 0.5;
+          panR[p] = 0.5 + pan * 0.5;
+        }
+
+        // 5 Violin Corpus & Bridge-Hill Resonators (A0=275, B1-=465, B1+=540, BH1=2480, BH2=3150 Hz)
+        const bodyFreqs = [275, 465, 540, 2480, 3150];
+        const bodyGains = [0.22, 0.18, 0.20, 0.42, 0.34];
+        const bodyFC = bodyFreqs.map(f => 2 * Math.sin(Math.PI * f * invSR));
+        const b1L = new Float32Array(5), b2L = new Float32Array(5);
+        const b1R = new Float32Array(5), b2R = new Float32Array(5);
+        let rosinLp = 0;
+        let alfPhase = 0;
+        const shimmerGain = new Float32Array(P);
+
+        for (let i = 0; i < numSamples; i++) {
+          const t = i * invSR;
+          const phraseT = t % 0.9;
+          const bowAttack = 1.0 - Math.exp(-phraseT / attackSec);
+          const bowBite = phraseT < 0.04 ? (1.0 + (1.0 - Math.min(1, attackMs / 40)) * 0.55 * Math.exp(-phraseT / 0.012)) : 1.0;
+
+          if ((i & 31) === 0) {
+            const bowPressure = 0.5 + 0.5 * fastSin(twoPi * t / 1.8 - 0.4);
+            for (let p = 0; p < P; p++) {
+              const whistlePeak = (p >= 6 && p <= 16) ? (0.85 + 0.65 * bowPressure) : 1.0;
+              shimmerGain[p] = baseAmp[p] * whistlePeak * (0.55 + 0.45 * fastSin(shimmerRate[p] * t + p));
+            }
+          }
+
+          const tremolo = (t > 1.2 && t < 2.4) ? (1.0 + 0.20 * fastSin(twoPi * 12.5 * t)) : 1.0;
+          const bowEnv = bowAttack * bowBite * (0.68 + 0.26 * fastSin(twoPi * t / SYNTH_DURATION - 0.5)) * tremolo;
+          const gliss = t > 2.4 ? (1.0 + 0.016 * fastSin(Math.PI * (t - 2.4) / 1.2)) : 1.0;
+          const vib = (1.0 + 0.0030 * fastSin(twoPi * 5.6 * t) + 0.0011 * fastCos(twoPi * 12.3 * t)) * gliss;
+
+          let sigL = 0, sigR = 0;
+          for (let p = 0; p < P; p++) {
+            phasesA[p] += dPhaseA[p] * vib;
+            phasesB[p] += dPhaseB[p] * (2.0 - vib);
+            const s = (fastSin(phasesA[p]) + fastSin(phasesB[p]) * 0.65) * shimmerGain[p];
+            sigL += s * panL[p];
+            sigR += s * panR[p];
+          }
+
+          // Helmholtz ALF subharmonic + colophony micro-crackle
+          alfPhase += twoPi * (f0_A * 0.502) * invSR;
+          const alfGrit = fastSin(alfPhase) * noiseAmt * 0.06 * (0.5 + 0.5 * fastSin(twoPi * 3.1 * t));
+          const rawNoise = rand();
+          rosinLp += 0.18 * (rawNoise - rosinLp);
+          const rosinHp = rawNoise - rosinLp;
+          const crackle = (rawNoise > 0.94 ? (rawNoise - 0.94) * 5.5 : 0);
+          const slipStick = (0.28 + 0.72 * Math.abs(fastSin(phasesA[0]))) * noiseAmt * 0.17;
+          const rL = (rosinHp + crackle * 0.35) * slipStick + alfGrit;
+          const rR = (rosinHp - crackle * 0.35) * slipStick * (1 - 0.28 * rawNoise) + alfGrit;
+
+          let bodySumL = 0, bodySumR = 0;
+          for (let k = 0; k < 5; k++) {
+            const hL = (sigL + rL) - b1L[k] * 0.22 - b2L[k];
+            b1L[k] += bodyFC[k] * hL;
+            b2L[k] += bodyFC[k] * b1L[k];
+            bodySumL += b1L[k] * bodyGains[k];
+
+            const hR = (sigR + rR) - b1R[k] * 0.22 - b2R[k];
+            b1R[k] += bodyFC[k] * hR;
+            b2R[k] += bodyFC[k] * b1R[k];
+            bodySumR += b1R[k] * bodyGains[k];
+          }
+
+          left[i] = (sigL * 0.78 + bodySumL + rL * 0.36) * bowEnv;
+          right[i] = (sigR * 0.78 + bodySumR + rR * 0.36) * bowEnv;
+        }
+      }
+      else if (presetKey === 'breath') {
+        // [SOL #02] Aeolian Jet-Whistle & Boehm Key-Click (IRCAM SOL Bass Flute)
+        const boreF0 = 146.83 * (0.82 + centroidNorm * 0.45);
+        const H = 10;
+        const bpState1 = new Float32Array(H);
+        const bpState2 = new Float32Array(H);
+        const whistlePhases = new Float32Array(H);
+        const dWhistle = new Float32Array(H);
+        const fCoeff = new Float32Array(H);
+        const oeArr = new Float32Array(H);
+        const panL = new Float32Array(H);
+        const panR = new Float32Array(H);
+        const harmEnv = new Float32Array(H);
+        const qCoeff = Math.max(0.012, 0.048 * (0.30 + flatness * 0.70));
+
+        for (let h = 0; h < H; h++) {
+          const mult = (h + 1) * (1 + inharm * h * 0.022);
+          const freq = Math.min(13500, boreF0 * mult);
+          fCoeff[h] = 2 * Math.sin(Math.PI * freq * invSR);
+          dWhistle[h] = twoPi * freq * invSR;
+          whistlePhases[h] = h * 0.9;
+          const isEven = (h % 2 === 1);
+          oeArr[h] = Math.max(0.18, isEven ? (1 + oddEven * 0.65) : (1 - oddEven * 0.65));
+          const pan = ((h % 2 === 0 ? -1 : 1) * ((h + 1) / H)) * (0.15 + spreadNorm * 0.75);
+          panL[h] = 0.5 - pan * 0.5;
+          panR[h] = 0.5 + pan * 0.5;
+        }
+
+        let lipPhase = 0;
+        for (let i = 0; i < numSamples; i++) {
+          const t = i * invSR;
+          const phrasePos = (t % 1.8) / 1.8;
+          const jetRise = 1.0 - Math.exp(-(t % 1.8) / Math.max(0.008, attackSec * 1.2));
+          const jetPressure = jetRise * (0.20 + 0.80 * Math.pow(fastSin(Math.PI * phrasePos), 1.3));
+          const frullato = 1.0 + (phrasePos > 0.20 && phrasePos < 0.80 ? 0.28 * fastSin(twoPi * 23.0 * t) : 0);
+
+          if ((i & 31) === 0) {
+            const targetHarm = 0.9 + jetPressure * (3.2 + centroidNorm * 4.8);
+            for (let h = 0; h < H; h++) {
+              harmEnv[h] = Math.exp(-Math.pow((h - targetHarm) / 1.85, 2)) * oeArr[h];
+            }
+          }
+
+          // Labium verge-jet vortex turbulence + bore resonances
+          lipPhase += twoPi * (265 + jetPressure * 680) * invSR;
+          const white = rand();
+          const vergeExcite = white * 0.82 + fastSin(lipPhase) * 0.18 * (0.3 + noiseAmt * 0.5);
+          let boreL = 0, boreR = 0;
+
+          for (let h = 0; h < H; h++) {
+            const high = vergeExcite - bpState1[h] * qCoeff - bpState2[h];
+            bpState1[h] += fCoeff[h] * high;
+            bpState2[h] += fCoeff[h] * bpState1[h];
+
+            whistlePhases[h] += dWhistle[h];
+            const edgeWhistle = fastSin(whistlePhases[h]) * (1 - noiseAmt * 0.45) * 0.16;
+            const modeSig = (bpState1[h] * 0.25 * (0.45 + noiseAmt * 0.65) + edgeWhistle) * harmEnv[h];
+            boreL += modeSig * panL[h];
+            boreR += modeSig * panR[h];
+          }
+
+          left[i] = boreL * jetPressure * frullato;
+          right[i] = boreR * jetPressure * frullato;
+        }
+
+        // Boehm Silver Key-Clicks & Tongue-Ram Pad Thumps scaled by grainSec & attackSec
+        const clickSpacing = Math.max(0.14, Math.min(0.46, 0.14 + grainSec * 1.45));
+        const clickPitches = [130.81, 146.83, 164.81, 155.56, 196.00, 138.59, 174.61, 146.83, 185.00, 130.81, 164.81, 146.83];
+        let cIdx = 0;
+        for (let cTime = 0.08; cTime < SYNTH_DURATION - 0.14; cTime += clickSpacing) {
+          const startIdx = Math.floor(cTime * SYNTH_SR);
+          const clickLen = Math.min(numSamples - startIdx, Math.floor(0.24 * SYNTH_SR));
+          const cFreq = clickPitches[cIdx % clickPitches.length] * (0.9 + centroidNorm * 0.25);
+          const cPan = ((cIdx % 2 === 0 ? -0.52 : 0.52)) * (0.1 + spreadNorm * 0.9);
+          const pL = 0.5 - cPan * 0.5;
+          const pR = 0.5 + cPan * 0.5;
+          const tau = 0.045 + dampingNorm * 0.12;
+          const snapGain = 0.35 + (1.0 - Math.min(1, attackMs / 80)) * 0.45;
+
+          for (let j = 0; j < clickLen; j++) {
+            const dt = j * invSR;
+            const instFreq = cFreq * (1 + 0.18 * Math.exp(-dt * 45));
+            const tubeDecay = Math.exp(-dt / tau);
+            const tubeThump = (fastSin(twoPi * instFreq * dt) + 0.52 * fastSin(twoPi * instFreq * 2.76 * dt)) * tubeDecay * 0.72;
+            const silverMech = (fastSin(twoPi * 3920 * dt) * 0.3 + fastSin(twoPi * 6240 * dt) * 0.2 + rand() * 0.55) * Math.exp(-dt / 0.0055) * snapGain;
+            left[startIdx + j] += (tubeThump + silverMech) * pL;
+            right[startIdx + j] += (tubeThump + silverMech) * pR;
+          }
+          cIdx++;
+        }
+      }
+      else if (presetKey === 'multiphonics') {
+        // [SOL #03] Split-Spectrum Multiphonics (IRCAM SOL Oboe / Clarinet)
+        // Coupled Double-Reed Non-Linear Impedance + Sum/Difference Intermodulation + 5 Conical Bore Formants
+        const f1 = 277.18 * (0.85 + centroidNorm * 0.4);
+        const splitRatio = 1.618 + inharm * 0.28;
+        const f2 = f1 * splitRatio;
+        const beatHz = 6.5 + noiseAmt * 15.0;
+        const f3 = f2 + beatHz;
+        const fDiff = Math.abs(f2 - f1);
+        const fSum = Math.min(12000, f1 + f2);
+
+        let p1 = 0, p2 = 0, p3 = 0, pDiff = 0, pSum = 0;
+        const baseFormants = [
+          780 * (0.85 + centroidNorm * 0.35),
+          1420 * (0.85 + centroidNorm * 0.35),
+          2650 * (0.8 + centroidNorm * 0.4),
+          3800 * (0.8 + centroidNorm * 0.4),
+          5200 * (0.75 + centroidNorm * 0.45)
+        ];
+        const fCoeff = new Float32Array(5);
+        const qCoeff = 0.09 + flatness * 0.18;
+        const fState1L = new Float32Array(5), fState2L = new Float32Array(5);
+        const fState1R = new Float32Array(5), fState2R = new Float32Array(5);
+
+        for (let i = 0; i < numSamples; i++) {
+          const t = i * invSR;
+          const phraseDt = t % 1.2;
+          const attackRise = 1.0 - Math.exp(-phraseDt / attackSec);
+          const splitBifurcation = phraseDt < 0.28 ? (phraseDt / 0.28) : (0.76 + 0.24 * fastSin(twoPi * (t - 0.28) / 1.5));
+          const reedPressure = attackRise * (0.70 + 0.28 * fastSin(twoPi * t / 1.8 - 0.4));
+          const embouchureJitter = 1.0 + 0.0026 * fastSin(twoPi * 4.9 * t) + 0.0016 * fastCos(twoPi * 13.4 * t);
+
+          if ((i & 31) === 0) {
+            const vowelMod = 1.0 + 0.20 * fastSin(twoPi * t / 1.8);
+            for (let k = 0; k < 5; k++) {
+              fCoeff[k] = 2 * Math.sin(Math.PI * Math.min(13500, baseFormants[k] * vowelMod) * invSR);
+            }
+          }
+
+          p1 += twoPi * (f1 * embouchureJitter) * invSR;
+          p2 += twoPi * (f2 * embouchureJitter) * invSR;
+          p3 += twoPi * (f3 * (2 - embouchureJitter)) * invSR;
+          pDiff += twoPi * fDiff * invSR;
+          pSum += twoPi * fSum * invSR;
+
+          const w1 = fastSin(p1) + (0.45 - oddEven * 0.25) * fastSin(2 * p1) + (0.35 + oddEven * 0.25) * fastSin(3 * p1);
+          const w2 = (fastSin(p2) + 0.42 * fastSin(2 * p2) + 0.28 * fastSin(3 * p2)) * splitBifurcation;
+          const w3 = fastSin(p3) * (0.55 + noiseAmt * 0.35) * splitBifurcation;
+          const wIntermod = (fastSin(pDiff) * 0.38 + fastSin(pSum) * 0.22) * (0.5 + inharm * 0.5) * splitBifurcation;
+
+          const reedAir = rand() * noiseAmt * 0.14;
+          const drive = 1.8 + reedPressure * 0.95;
+          const rawReedL = Math.tanh((w1 * 0.50 + w2 * 0.45 + w3 * 0.36 + wIntermod + reedAir + 0.08) * drive);
+          const rawReedR = Math.tanh((w1 * 0.48 + w2 * 0.50 - w3 * 0.36 + wIntermod - reedAir + 0.08) * drive);
+
+          let formL = rawReedL * 0.35, formR = rawReedR * 0.35;
+          for (let k = 0; k < 5; k++) {
+            const hL = rawReedL - fState1L[k] * qCoeff - fState2L[k];
+            fState1L[k] += fCoeff[k] * hL;
+            fState2L[k] += fCoeff[k] * fState1L[k];
+
+            const hR = rawReedR - fState1R[k] * qCoeff - fState2R[k];
+            fState1R[k] += fCoeff[k] * hR;
+            fState2R[k] += fCoeff[k] * fState1R[k];
+
+            const weight = 0.40 / Math.pow(k + 1, 0.72);
+            formL += fState1L[k] * weight;
+            formR += fState1R[k] * weight;
+          }
+
+          left[i] = formL * reedPressure;
+          right[i] = formR * reedPressure;
+        }
+      }
+      else if (presetKey === 'collegno') {
+        // [MuBu #04] Col Legno Battuto & Ricochet (IRCAM MuBu Granular)
+        // Euler-Bernoulli Pernambuco Wood Bow-Stick + Bartok Snap + 4-String Open-Fifth Resonances
+        const events = [];
+        const gestureStarts = [0.04, 0.94, 1.84, 2.74];
+        const gestureBasePitches = [196.00, 293.66, 246.94, 329.63];
+
+        gestureStarts.forEach((gStart, gIdx) => {
+          let tCursor = gStart;
+          let dt = Math.max(0.026, Math.min(0.18, grainSec * 1.65));
+          const maxBounces = Math.max(4, Math.min(14, Math.round(13 - (grainMs / 220) * 8)));
+          const baseF0 = gestureBasePitches[gIdx] * (0.82 + centroidNorm * 0.48);
+          for (let b = 0; b < maxBounces; b++) {
+            if (tCursor < SYNTH_DURATION - 0.05) {
+              events.push({
+                time: tCursor,
+                f0: baseF0 * (1 + b * 0.015),
+                vel: Math.pow(0.87, b) * (b === 0 ? 1.0 : 0.88),
+                pan: ((gIdx % 2 === 0 ? -1 : 1) * (0.72 - b * 0.12)) * (0.1 + spreadNorm * 0.9)
+              });
+            }
+            tCursor += dt;
+            dt = Math.max(0.018, dt * 0.74);
+          }
+        });
+
+        const stiffModes = [1, 2, 3, 4, 5, 6, 7, 8];
+        // Euler-Bernoulli free-free wood stick modal ratios: 1, 2.756, 5.404, 8.933
+        const woodModes = [1640, 2920, 4520, 6840];
+        const B = 0.002 + inharm * 0.028;
+
+        events.forEach(ev => {
+          const startSample = Math.floor(ev.time * SYNTH_SR);
+          const maxDur = Math.min(0.65, 0.14 + damping * 0.11);
+          const lenSamples = Math.min(numSamples - startSample, Math.floor(maxDur * SYNTH_SR));
+          const pL = 0.5 - ev.pan * 0.5;
+          const pR = 0.5 + ev.pan * 0.5;
+
+          const modeFreqs = stiffModes.map(n => Math.min(15500, ev.f0 * n * Math.sqrt(1 + B * n * n)));
+          const modeTaus = stiffModes.map((_, mIdx) => (0.08 + damping * 0.065) / (1 + mIdx * 0.44));
+          const modeAmps = stiffModes.map((n) => {
+            const isEven = (n % 2 === 0);
+            const oe = Math.max(0.18, isEven ? (1 + oddEven * 0.6) : (1 - oddEven * 0.6));
+            return oe * (0.34 / Math.pow(n, 0.48));
+          });
+          const woodScale = 0.75 + (1.0 - Math.min(1, attackMs / 90)) * 0.65;
+
+          for (let j = 0; j < lenSamples; j++) {
+            const dt = j * invSR;
+            const attEnv = 1.0 - Math.exp(-dt / Math.max(0.0005, attackSec * 0.18));
+
+            let woodSig = 0;
+            if (dt < 0.036) {
+              const woodEnv = Math.exp(-dt / 0.0055) * noiseAmt * woodScale;
+              for (let w = 0; w < 4; w++) {
+                woodSig += fastSin(twoPi * woodModes[w] * (0.82 + centroidNorm * 0.36) * dt) * woodEnv * (0.36 / (w + 1));
+              }
+              woodSig += rand() * Math.exp(-dt / 0.0026) * noiseAmt * 0.46 * woodScale;
+            }
+
+            const bodySig = dt < 0.11
+              ? (fastSin(twoPi * 208 * dt) * Math.exp(-dt / 0.025) + 0.65 * fastSin(twoPi * 445 * dt) * Math.exp(-dt / 0.016)) * 0.42
+              : 0;
+
+            let stringSig = 0;
+            for (let mIdx = 0; mIdx < 8; mIdx++) {
+              stringSig += fastSin(twoPi * modeFreqs[mIdx] * dt) * Math.exp(-dt / modeTaus[mIdx]) * modeAmps[mIdx];
+            }
+
+            const sampleVal = Math.tanh((woodSig + bodySig + stringSig) * attEnv * ev.vel * 1.65);
+            left[startSample + j] += sampleVal * pL;
+            right[startSample + j] += sampleVal * pR;
+          }
+        });
+      }
+      else if (presetKey === 'modalysbell') {
+        // [MOD #05] Modalys 24-Mode Bronze Plate & Chau Tam-Tam Resonance
+        // Non-linear energy cascade from low axisymmetric modes into shimmering high modes
+        const f0 = 110.0 * (0.75 + centroidNorm * 0.65);
+        const plateRatios = [
+          1.000, 1.382, 1.764, 2.000, 2.414, 2.892, 3.416, 3.985,
+          4.612, 5.294, 6.045, 6.862, 7.745, 8.690, 9.710, 10.820,
+          12.010, 13.280, 14.620, 16.050, 17.580, 19.190, 20.880, 22.650
+        ];
+        const M = plateRatios.length;
+        const strikes = [
+          { time: 0.02, baseMult: 1.0, amp: 1.0, pan: -0.28 },
+          { time: 1.22, baseMult: 1.498, amp: 0.88, pan: 0.32 },
+          { time: 2.42, baseMult: 1.189, amp: 0.82, pan: -0.15 }
+        ];
+
+        strikes.forEach(st => {
+          const freqs = new Float32Array(M);
+          const bloomTaus = new Float32Array(M);
+          const decayTaus = new Float32Array(M);
+          const baseAmps = new Float32Array(M);
+          const pL = new Float32Array(M);
+          const pR = new Float32Array(M);
+          const spinRates = new Float32Array(M);
+
+          const malletSoftness = attackMs / 150.0;
+          for (let m = 0; m < M; m++) {
+            const r = Math.pow(plateRatios[m], 0.78 + inharm * 0.42);
+            freqs[m] = twoPi * Math.min(16500, f0 * st.baseMult * r);
+            // Tam-tam cascade: high modes bloom slower when mallet is soft
+            bloomTaus[m] = Math.max(0.001, attackSec * (0.25 + m * 0.08 * malletSoftness) + (m > 4 ? (m - 4) * 0.015 * (0.35 + noiseAmt) : 0.002));
+            decayTaus[m] = Math.max(0.18, (0.35 + damping * 0.85) / (1 + m * 0.16));
+            const isEven = (m % 2 === 1);
+            const oe = Math.max(0.16, isEven ? (1 + oddEven * 0.62) : (1 - oddEven * 0.62));
+            const highRolloff = Math.pow(Math.max(0.1, 1.0 - malletSoftness * 0.45), m * 0.25);
+            baseAmps[m] = (0.14 / Math.pow(m + 1, 0.34)) * oe * st.amp * highRolloff;
+            const modePan = (st.pan + ((m % 2 === 0 ? -1 : 1) * (m / M) * 0.75)) * (0.12 + spreadNorm * 0.88);
+            pL[m] = 0.5 - modePan * 0.5;
+            pR[m] = 0.5 + modePan * 0.5;
+            spinRates[m] = twoPi * (0.62 + m * 0.34);
+          }
+
+          const envArr = new Float32Array(M);
+          for (let i = 0; i < numSamples; i++) {
+            const t = i * invSR;
+            const dt = t >= st.time ? (t - st.time) : (t + SYNTH_DURATION - st.time);
+            if ((i & 31) === 0) {
+              for (let m = 0; m < M; m++) {
+                const rise = 1.0 - Math.exp(-dt / bloomTaus[m]);
+                const dec = Math.exp(-dt / decayTaus[m]);
+                const spin = 0.75 + 0.25 * fastCos(spinRates[m] * dt);
+                envArr[m] = baseAmps[m] * rise * dec * spin;
+              }
+            }
+            let sL = 0, sR = 0;
+            for (let m = 0; m < M; m++) {
+              const val = fastSin(freqs[m] * dt) * envArr[m];
+              sL += val * pL[m];
+              sR += val * pR[m];
+            }
+            if (dt < 0.025) {
+              const click = rand() * Math.exp(-dt / Math.max(0.002, attackSec * 0.2)) * (0.2 + noiseAmt * 0.35) * (1.2 - malletSoftness * 0.7);
+              sL += click;
+              sR += click;
+            }
+            left[i] += sL;
+            right[i] += sR;
+          }
+        });
+      }
+      else if (presetKey === 'supervpfreeze') {
+        // [SVP #06] Phase-Vocoder C1 Spectral Freeze (IRCAM SuperVP)
+        // 24 Sinusoidal Partials + Narrowband Spectral Residual Whisper
+        const c1 = 32.7032 * (1.2 + centroidNorm * 0.8);
+        const partials = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 19, 21, 23, 25, 27, 29, 31];
+        const P = partials.length;
+        const phases = new Float32Array(P);
+        const dPhases = new Float32Array(P);
+        const fCoeff = new Float32Array(P);
+        const baseAmps = new Float32Array(P);
+        const panL = new Float32Array(P);
+        const panR = new Float32Array(P);
+        const bp1 = new Float32Array(P);
+        const bp2 = new Float32Array(P);
+        const waveGain = new Float32Array(P);
+
+        const targetIdx = 3 + centroidNorm * 14;
+        for (let idx = 0; idx < P; idx++) {
+          const pNum = partials[idx];
+          const stretch = 1 + inharm * idx * 0.018;
+          const freq = Math.min(15800, c1 * pNum * stretch);
+          phases[idx] = idx * 1.37;
+          dPhases[idx] = twoPi * freq * invSR;
+          fCoeff[idx] = 2 * Math.sin(Math.PI * freq * invSR);
+
+          const isEven = (pNum % 2 === 0);
+          const oeWeight = Math.max(0.16, isEven ? (1 + oddEven * 0.65) : (1 - oddEven * 0.65));
+          const spectralFocus = Math.exp(-Math.pow((idx - targetIdx) / (5.2 + flatness * 4.5), 2));
+          baseAmps[idx] = oeWeight * (0.34 + 0.66 * spectralFocus) * (0.20 / Math.pow(idx + 1, 0.27));
+
+          const pan = ((idx % 2 === 0 ? -1 : 1) * ((idx + 1) / P)) * (0.12 + spreadNorm * 0.88);
+          panL[idx] = 0.5 - pan * 0.5;
+          panR[idx] = 0.5 + pan * 0.5;
+        }
+
+        for (let i = 0; i < numSamples; i++) {
+          const t = i * invSR;
+          const phrasePos = t % 1.8;
+          const freezeAttack = 1.0 - Math.exp(-phrasePos / Math.max(0.012, attackSec * 1.4));
+          if ((i & 31) === 0) {
+            const onsetBoost = t < 0.45 ? (1.0 - t / 0.45) : 0.0;
+            for (let idx = 0; idx < P; idx++) {
+              const lowBrass = idx < 5 ? (1.0 + onsetBoost * 0.85) : (t < 0.25 ? (0.3 + 0.7 * (t / 0.25)) : 1.0);
+              waveGain[idx] = baseAmps[idx] * lowBrass * freezeAttack * (0.58 + 0.42 * fastSin(twoPi * t / SYNTH_DURATION - idx * 0.42));
+            }
+          }
+          const white = rand();
+          let sumL = 0, sumR = 0;
+
+          for (let idx = 0; idx < P; idx++) {
+            phases[idx] += dPhases[idx];
+            const sineSig = fastSin(phases[idx]) * (1.0 - noiseAmt * 0.38);
+            const high = white - bp1[idx] * 0.025 - bp2[idx];
+            bp1[idx] += fCoeff[idx] * high;
+            bp2[idx] += fCoeff[idx] * bp1[idx];
+            const whisperSig = bp1[idx] * noiseAmt * 0.20;
+
+            const sig = (sineSig + whisperSig) * waveGain[idx];
+            sumL += sig * panL[idx];
+            sumR += sig * panR[idx];
+          }
+
+          left[i] = sumL;
+          right[i] = sumR;
+        }
+      }
+
+      // =======================================================================
+      // SECTION B MASTER DSP PIPELINE (Applies Attack, Grain, Damping & Spat5)
+      // Ensures EVERY preset visibly & audibly transforms with B-Section sliders
+      // =======================================================================
+
+      // B1 & B2: Asynchronous Dual-Head MuBu Granular Cloud Resynthesizer + Phrase Attack Shaper
+      const gLen = Math.max(256, Math.min(8190, Math.floor(grainSec * SYNTH_SR)));
+      const ringSize = 16384;
+      const ringL = new Float32Array(ringSize);
+      const ringR = new Float32Array(ringSize);
+      let rWrite = 0;
+      const gPhaseStep = 1.0 / gLen;
+      let gPhaseA = 0.0;
+      let gPhaseB = 0.5;
+      let readPosA = 0.0;
+      let readPosB = gLen * 0.5;
+      let rateA = 1.024;
+      let rateB = 0.976;
+      const shortGrainRatio = Math.max(0, 1.0 - (grainMs - 8) / 212.0);
+      const grainWet = 0.22 + shortGrainRatio * 0.38;
+      const grainPulseDepth = 0.08 + shortGrainRatio * 0.32;
+
+      for (let i = 0; i < numSamples; i++) {
+        const t = i * invSR;
+        const phraseT = t % 0.9;
+        // B1: Explicit Log Attack Time Phrase Articulation (2ms percussive bite vs 150ms slow swell)
+        let attShape = 1.0;
+        if (attackMs > 28) {
+          attShape = 0.18 + 0.82 * (1.0 - Math.exp(-phraseT / (attackSec * 1.45)));
+        } else {
+          attShape = 1.0 + ((28.0 - attackMs) / 26.0) * 0.55 * Math.exp(-phraseT / 0.014);
+        }
+
+        const inL = left[i] * attShape;
+        const inR = right[i] * attShape;
+
+        ringL[rWrite] = inL;
+        ringR[rWrite] = inR;
+
+        gPhaseA += gPhaseStep;
+        if (gPhaseA >= 1.0) {
+          gPhaseA -= 1.0;
+          readPosA = (rWrite - Math.floor(gLen * (0.2 + 0.6 * Math.abs(rand()))) + ringSize) & (ringSize - 1);
+          rateA = 1.0 + (0.015 + shortGrainRatio * 0.065) * rand();
+        }
+        gPhaseB += gPhaseStep;
+        if (gPhaseB >= 1.0) {
+          gPhaseB -= 1.0;
+          readPosB = (rWrite - Math.floor(gLen * (0.2 + 0.6 * Math.abs(rand()))) + ringSize) & (ringSize - 1);
+          rateB = 1.0 + (0.015 + shortGrainRatio * 0.065) * rand();
+        }
+
+        const winA = 0.5 * (1.0 - fastCos(twoPi * gPhaseA));
+        const winB = 0.5 * (1.0 - fastCos(twoPi * gPhaseB));
+
+        const idxA = Math.floor(readPosA) & (ringSize - 1);
+        const idxB = Math.floor(readPosB) & (ringSize - 1);
+        const gOutL = ringL[idxA] * winA + ringR[idxB] * winB * 0.85;
+        const gOutR = ringR[idxA] * winA + ringL[idxB] * winB * 0.85;
+
+        readPosA = (readPosA + rateA) % ringSize;
+        readPosB = (readPosB + rateB) % ringSize;
+        rWrite = (rWrite + 1) & (ringSize - 1);
+
+        // Synchronous grain pulsation (audible texture differentiation for 8ms vs 220ms)
+        const grainPulse = (1.0 - grainPulseDepth) + grainPulseDepth * fastSin(twoPi * (t / grainSec));
+        left[i] = (inL * (1.0 - grainWet * 0.45) + gOutL * grainWet) * (0.85 + 0.15 * grainPulse);
+        right[i] = (inR * (1.0 - grainWet * 0.45) + gOutR * grainWet) * (0.85 + 0.15 * grainPulse);
+      }
+
+      // B3: Rolloff95 Lowpass + 6-Tap 3D Early Reflections + 6-Comb FDN + Dual Schroeder Allpass Diffusers
+      const cutF = 2 * Math.sin(Math.PI * Math.min(16500, rolloffHz) * invSR);
+      let lpL = 0, lpR = 0;
+
+      // 3D Early Reflections circular line (Floor, Ceiling, L/R Walls, Front/Rear Balcony)
+      const erBufL = new Float32Array(2048);
+      const erBufR = new Float32Array(2048);
+      let erPtr = 0;
+      const erTaps = [331, 523, 769, 1049, 1381, 1747];
+      const erLevel = 0.14 + spreadNorm * 0.24 + dampingNorm * 0.12;
+
+      const combDelays = [1310, 1637, 1811, 1933, 2113, 2347];
+      const combBufs = combDelays.map(d => new Float32Array(d));
+      const combPos = new Int32Array(6);
+
+      // Dual Schroeder Allpass Diffusers for silky, non-metallic 3D hall tail
+      const ap1Len = 347, ap2Len = 587;
+      const ap1BufL = new Float32Array(ap1Len), ap1BufR = new Float32Array(ap1Len);
+      const ap2BufL = new Float32Array(ap2Len), ap2BufR = new Float32Array(ap2Len);
+      let ap1Ptr = 0, ap2Ptr = 0;
+      const apGain = 0.52;
+
+      // Dramatic scaling from anechoic dry (0.20s) to cathedral modal sustain (4.50s)
+      const fb = Math.min(0.89, 0.24 + dampingNorm * 0.64);
+      const wetMix = 0.06 + dampingNorm * 0.60 + spreadNorm * 0.14;
+      const dryGain = 1.0 - dampingNorm * 0.34;
+
+      for (let i = 0; i < numSamples; i++) {
+        let dryL = left[i];
+        let dryR = right[i];
+        if (damping < 0.90) {
+          const dtPhrase = (i * invSR) % 0.9;
+          const dryDecay = Math.exp(-dtPhrase / Math.max(0.14, damping * 0.65));
+          dryL *= dryDecay;
+          dryR *= dryDecay;
+        }
+
+        lpL += cutF * (dryL - lpL);
+        lpR += cutF * (dryR - lpR);
+
+        // 3D Early Reflection Cluster
+        erBufL[erPtr] = lpL;
+        erBufR[erPtr] = lpR;
+        const er1 = erBufL[(erPtr - erTaps[0]) & 2047] * 0.32 + erBufR[(erPtr - erTaps[2]) & 2047] * 0.22 + erBufL[(erPtr - erTaps[4]) & 2047] * 0.14;
+        const er2 = erBufR[(erPtr - erTaps[1]) & 2047] * 0.32 + erBufL[(erPtr - erTaps[3]) & 2047] * 0.22 + erBufR[(erPtr - erTaps[5]) & 2047] * 0.14;
+        erPtr = (erPtr + 1) & 2047;
+
+        const roomInL = lpL + er1 * erLevel;
+        const roomInR = lpR + er2 * erLevel;
+
+        let revL = 0, revR = 0;
+        for (let c = 0; c < 6; c++) {
+          const buf = combBufs[c];
+          const p = combPos[c];
+          const o = buf[p];
+          const feed = (c % 2 === 0) ? (roomInL * 0.78 + roomInR * 0.22) : (roomInR * 0.78 + roomInL * 0.22);
+          buf[p] = feed + o * fb;
+          combPos[c] = (p + 1 >= combDelays[c]) ? 0 : (p + 1);
+          if (c % 2 === 0) revL += o;
+          else revR += o;
+        }
+        revL *= 0.26;
+        revR *= 0.26;
+
+        // Pass comb reverb through 2-stage Schroeder Allpass Diffusers
+        const a1L = ap1BufL[ap1Ptr];
+        const v1L = revL + a1L * apGain;
+        ap1BufL[ap1Ptr] = v1L;
+        const d1L = a1L - v1L * apGain;
+
+        const a1R = ap1BufR[ap1Ptr];
+        const v1R = revR + a1R * apGain;
+        ap1BufR[ap1Ptr] = v1R;
+        const d1R = a1R - v1R * apGain;
+        ap1Ptr = (ap1Ptr + 1 >= ap1Len) ? 0 : (ap1Ptr + 1);
+
+        const a2L = ap2BufL[ap2Ptr];
+        const v2L = d1L + a2L * apGain;
+        ap2BufL[ap2Ptr] = v2L;
+        const diffL = a2L - v2L * apGain;
+
+        const a2R = ap2BufR[ap2Ptr];
+        const v2R = d1R + a2R * apGain;
+        ap2BufR[ap2Ptr] = v2R;
+        const diffR = a2R - v2R * apGain;
+        ap2Ptr = (ap2Ptr + 1 >= ap2Len) ? 0 : (ap2Ptr + 1);
+
+        left[i] = lpL * dryGain + er1 * (erLevel * 0.55) + diffL * wetMix;
+        right[i] = lpR * dryGain + er2 * (erLevel * 0.55) + diffR * wetMix;
+      }
+
+      // B4: HRTF Binaural 3D Externalization (Head-Shadowing, Pinna Elevation Cue, Haas ITD & 3D Ambisonic Width)
+      const itdDelaySamples = Math.round(spreadNorm * 28); // 0 to 0.63 ms binaural interaural time difference
+      const itdBuf = new Float32Array(Math.max(1, itdDelaySamples + 1));
+      let itdPtr = 0;
+      const stereoWidth = 0.12 + spreadNorm * 1.84;
+      const midWeight = 0.94 - spreadNorm * 0.20;
+
+      let headLpL = 0, headLpR = 0;
+      let pinnaLpL = 0, pinnaLpR = 0;
+      const pinnaCut = 2 * Math.sin(Math.PI * 5800 * invSR);
+
+      for (let i = 0; i < numSamples; i++) {
+        const l0 = left[i];
+        const r0 = right[i];
+        const mid = 0.5 * (l0 + r0) * midWeight;
+        const side = 0.5 * (l0 - r0) * stereoWidth;
+
+        // Smooth 3D azimuth & elevation trajectory inside spherical dome
+        const t = i * invSR;
+        const rotAz = spreadNorm * 0.42 * fastSin(twoPi * t / 3.6);
+        const rotEl = spreadNorm * (0.25 + 0.35 * fastCos(twoPi * t / 5.4));
+
+        const wL = mid + side + side * rotAz;
+        const wR = mid - side - side * rotAz;
+
+        // Contralateral Cranial Head-Shadowing LPF (farther ear gets gentle HF shadow)
+        const shadowCutL = Math.max(0.28, 0.90 - Math.max(0, rotAz) * (0.85 * spreadNorm));
+        const shadowCutR = Math.max(0.28, 0.90 - Math.max(0, -rotAz) * (0.85 * spreadNorm));
+        headLpL += shadowCutL * (wL - headLpL);
+        headLpR += shadowCutR * (wR - headLpR);
+
+        // Pinna Elevation Spectral Cue (5.8kHz+ vertical height sheen proportional to elevation)
+        pinnaLpL += pinnaCut * (headLpL - pinnaLpL);
+        pinnaLpR += pinnaCut * (headLpR - pinnaLpR);
+        const elPresence = rotEl * 0.24;
+        const extL = headLpL + (headLpL - pinnaLpL) * elPresence;
+        const extR = headLpR + (headLpR - pinnaLpR) * elPresence;
+
+        if (itdDelaySamples > 0) {
+          itdBuf[itdPtr] = extR;
+          const delayedR = itdBuf[(itdPtr + 1) % itdDelaySamples];
+          itdPtr = (itdPtr + 1) % itdDelaySamples;
+          left[i] = extL;
+          right[i] = delayedR;
+        } else {
+          left[i] = extL;
+          right[i] = extR;
+        }
+      }
+
+      // Studio Mastering Sheen ("Harmonic Air & Sub Body Exciter") + 50ms Cosine Fade + -1.3 dBFS Limiter
+      const subCut = 2 * Math.sin(Math.PI * 95 * invSR);
+      const airCut = 2 * Math.sin(Math.PI * 8600 * invSR);
+      let subLpL = 0, subLpR = 0;
+      let airLpL = 0, airLpR = 0;
+      const airDrive = 0.14 + centroidNorm * 0.18;
+
+      for (let i = 0; i < numSamples; i++) {
+        const sL = left[i];
+        const sR = right[i];
+        subLpL += subCut * (sL - subLpL);
+        subLpR += subCut * (sR - subLpR);
+        airLpL += airCut * (sL - airLpL);
+        airLpR += airCut * (sR - airLpR);
+
+        const airL = sL - airLpL;
+        const airR = sR - airLpR;
+        // Subtle 2nd-order warm harmonic sheen + chest sub body + 8.6kHz+ air presence
+        left[i] = sL + 0.11 * subLpL + airDrive * airL + 0.055 * sL * Math.abs(sL);
+        right[i] = sR + 0.11 * subLpR + airDrive * airR + 0.055 * sR * Math.abs(sR);
+      }
+
+      const fadeSamples = Math.floor(0.05 * SYNTH_SR);
+      for (let i = 0; i < fadeSamples; i++) {
+        const fade = 0.5 * (1 - fastCos(Math.PI * i / fadeSamples));
+        left[i] *= fade;
+        right[i] *= fade;
+        left[numSamples - 1 - i] *= fade;
+        right[numSamples - 1 - i] *= fade;
+      }
+
+      let peak = 0;
+      for (let i = 0; i < numSamples; i++) {
+        const aL = Math.abs(left[i]);
+        const aR = Math.abs(right[i]);
+        if (aL > peak) peak = aL;
+        if (aR > peak) peak = aR;
+      }
+
+      const preGain = peak > 0.0001 ? (1.0 / peak) : 1.0;
+      const masterDrive = presetKey === 'collegno' ? 1.85 : 1.25;
+      const normLimit = 0.86 / Math.tanh(masterDrive);
+
+      for (let i = 0; i < numSamples; i++) {
+        left[i] = Math.tanh(left[i] * preGain * masterDrive) * normLimit;
+        right[i] = Math.tanh(right[i] * preGain * masterDrive) * normLimit;
+      }
+
+      return { left, right };
+    }
+
+    function encodeStereoWavDataUri(left, right, sr) {
+      const numSamples = left.length;
+      const numChannels = 2;
+      const bytesPerSample = 2;
+      const dataSize = numSamples * numChannels * bytesPerSample;
+      const buffer = new ArrayBuffer(44 + dataSize);
+      const view = new DataView(buffer);
+
+      const writeStr = (offset, str) => {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      };
+
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + dataSize, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, numChannels, true);
+      view.setUint32(24, sr, true);
+      view.setUint32(28, sr * numChannels * bytesPerSample, true);
+      view.setUint16(32, numChannels * bytesPerSample, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, dataSize, true);
+
+      const pcm = new Int16Array(buffer, 44);
+      for (let i = 0, j = 0; i < numSamples; i++) {
+        const sL = Math.max(-1, Math.min(1, left[i]));
+        const sR = Math.max(-1, Math.min(1, right[i]));
+        pcm[j++] = sL < 0 ? sL * 0x8000 : sL * 0x7FFF;
+        pcm[j++] = sR < 0 ? sR * 0x8000 : sR * 0x7FFF;
+      }
+
+      const bytes = new Uint8Array(buffer);
+      const chunkSize = 0x8000;
+      const chunks = [];
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        chunks.push(String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize)));
+      }
+      return 'data:audio/wav;base64,' + window.btoa(chunks.join(''));
+    }
+
+    let renderedState = { ...state };
+    let loadedWavUri = null;
+
+    function syncFallbackMuteState() {
+      const wavEl = document.getElementById('studioWavAudio');
+      if (!wavEl) return;
+      // Never mute HTML5 WAV element so audio plays reliably across all browser/webview engines
+      wavEl.muted = false;
+      wavEl.volume = Math.min(1, Math.max(0, masterVolume * 0.88));
+    }
+
+    function ensureWebAudioBus() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) return null;
+      if (!audioCtx) {
+        audioCtx = new AudioContextClass();
+        audioCtx.onstatechange = () => {
+          syncFallbackMuteState();
+        };
+      }
+      if (audioCtx.state !== 'running') {
+        try {
+          // Unlock WebKit/Safari hardware audio stream inside user gesture
+          const silentBuf = audioCtx.createBuffer(1, 1, 22050);
+          const silentSrc = audioCtx.createBufferSource();
+          silentSrc.buffer = silentBuf;
+          silentSrc.connect(audioCtx.destination);
+          silentSrc.start(0);
+          const p = audioCtx.resume();
+          if (p && p.then) {
+            p.then(() => syncFallbackMuteState()).catch(() => {});
+          }
+        } catch (e) {}
+      }
+      if (!webAudioNodes) {
+        // Strictly feed-forward, cycle-free WebAudio graph
+        const centroidFilter = audioCtx.createBiquadFilter();
+        centroidFilter.type = 'peaking';
+        centroidFilter.frequency.value = state.centroid;
+        centroidFilter.Q.value = 1.4;
+        centroidFilter.gain.value = 0.0;
+
+        const rolloffFilter = audioCtx.createBiquadFilter();
+        rolloffFilter.type = 'lowpass';
+        rolloffFilter.frequency.value = Math.min(20000, Math.max(800, state.rolloff));
+        rolloffFilter.Q.value = 0.8;
+
+        const transientFilter = audioCtx.createBiquadFilter();
+        transientFilter.type = 'highshelf';
+        transientFilter.frequency.value = 3200;
+        transientFilter.gain.value = 0.0;
+
+        const haasDelay = audioCtx.createDelay(0.08);
+        haasDelay.delayTime.value = Math.min(0.065, Math.max(0.002, 0.004 + (state.spread / 180) * 0.018));
+
+        const webMasterGain = audioCtx.createGain();
+        webMasterGain.gain.value = masterVolume * 0.65;
+
+        centroidFilter.connect(rolloffFilter);
+        rolloffFilter.connect(transientFilter);
+        transientFilter.connect(haasDelay);
+        haasDelay.connect(webMasterGain);
+        webMasterGain.connect(audioCtx.destination);
+
+        webAudioNodes = {
+          centroidFilter,
+          rolloffFilter,
+          transientFilter,
+          haasDelay,
+          webMasterGain
+        };
+      }
+      return webAudioNodes;
+    }
+
+    function playBufferInWebAudio(rendered, offsetSec = 0) {
+      const bus = ensureWebAudioBus();
+      if (!bus || !audioCtx) return;
+
+      if (currentBufferSource) {
+        try {
+          currentBufferSource.stop();
+          currentBufferSource.disconnect();
+        } catch (e) {}
+        currentBufferSource = null;
+      }
+
+      try {
+        // Reset real-time delta filter to neutral since the new buffer has all 10 params baked in
+        bus.centroidFilter.frequency.value = state.centroid;
+        bus.centroidFilter.gain.value = 0.0;
+        bus.rolloffFilter.frequency.value = Math.min(20000, Math.max(800, state.rolloff));
+        bus.transientFilter.gain.value = 0.0;
+        bus.haasDelay.delayTime.value = Math.min(0.065, Math.max(0.002, 0.004 + (state.spread / 180) * 0.018));
+        bus.webMasterGain.gain.value = masterVolume * 0.65;
+
+        const audioBuf = audioCtx.createBuffer(2, rendered.left.length, SYNTH_SR);
+        audioBuf.getChannelData(0).set(rendered.left);
+        audioBuf.getChannelData(1).set(rendered.right);
+
+        const src = audioCtx.createBufferSource();
+        src.buffer = audioBuf;
+        src.loop = true;
+        src.connect(bus.centroidFilter);
+        const safeOffset = Math.max(0, Math.min(SYNTH_DURATION - 0.01, offsetSec % SYNTH_DURATION));
+        if (offsetSec > 0.005) {
+          src.start(0, safeOffset);
+        } else {
+          src.start(0);
+        }
+        currentBufferSource = src;
+        syncFallbackMuteState();
+      } catch (e) {}
+    }
+
+    function syncAudioPlayerUI() {
+      const topLed = document.getElementById('audioLed');
+      const topText = document.getElementById('audioBtnText');
+      const topBtn = document.getElementById('audioToggleBtn');
+      const leftText = document.getElementById('leftAudioQuickText');
+      const deckBtn = document.getElementById('deckPlayBtn');
+      const deckIcon = document.getElementById('deckPlayIcon');
+      const deckText = document.getElementById('deckPlayText');
+      const deckLabel = document.getElementById('deckPresetLabel');
+      const maxDspPill = document.getElementById('maxDspPill');
+      const maxDspText = document.getElementById('maxDspText');
+
+      if (deckLabel) {
+        deckLabel.innerText = PRESET_SHORT_LABELS[state.activePreset] || state.activePreset;
+      }
+
+      if (isPlayingAudio) {
+        if (topLed) topLed.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-ping';
+        if (topText) topText.innerText = '실시간 DSP 재생 중 (클릭 시 정지)';
+        if (topBtn) topBtn.className = 'px-3.5 py-1.5 rounded text-xs font-semibold flex items-center gap-2 transition-all border border-emerald-400 bg-emerald-500/25 text-emerald-200 shadow-lg shadow-emerald-500/15 cursor-pointer';
+        if (leftText) leftText.innerText = 'DSP 사운드 재생 중 (정지)';
+        if (deckBtn) deckBtn.className = 'px-2.5 py-1 rounded bg-rose-500 hover:bg-rose-400 text-white font-bold mono text-[10.5px] flex items-center gap-1.5 transition cursor-pointer shadow-sm';
+        if (deckIcon) deckIcon.className = 'fa-solid fa-stop text-[9px]';
+        if (deckText) deckText.innerText = '재생 정지';
+        if (maxDspPill) maxDspPill.className = 'px-2 py-0.5 rounded bg-emerald-500 border border-emerald-300 text-zinc-950 transition cursor-pointer flex items-center gap-1 text-[9px] font-bold shadow-sm';
+        if (maxDspText) maxDspText.innerText = 'DSP ON';
+      } else {
+        if (topLed) topLed.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+        if (topText) topText.innerText = '실시간 주법 사운드 시연 (Audition DSP)';
+        if (topBtn) topBtn.className = 'px-3.5 py-1.5 rounded text-xs font-semibold flex items-center gap-2 transition-all border border-emerald-500/50 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 shadow-sm shadow-emerald-500/10 cursor-pointer';
+        if (leftText) leftText.innerText = '프리셋 클릭 시 즉시 재생';
+        if (deckBtn) deckBtn.className = 'px-2.5 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold mono text-[10.5px] flex items-center gap-1.5 transition cursor-pointer shadow-sm';
+        if (deckIcon) deckIcon.className = 'fa-solid fa-play text-[9px]';
+        if (deckText) deckText.innerText = '주법 음원 재생';
+        if (maxDspPill) maxDspPill.className = 'px-2 py-0.5 rounded bg-zinc-800 border border-zinc-600 text-zinc-300 hover:bg-zinc-700 transition cursor-pointer flex items-center gap-1 text-[9px] font-semibold';
+        if (maxDspText) maxDspText.innerText = 'DSP OFF';
+        const barL = document.getElementById('meterBarL');
+        const barR = document.getElementById('meterBarR');
+        const dbText = document.getElementById('meterDbText');
+        if (barL) barL.style.width = '0%';
+        if (barR) barR.style.width = '0%';
+        if (dbText) dbText.innerText = 'STANDBY';
+      }
+    }
+
+    function renderAndLoadActiveSound(useDefaultCacheIfMatching = false) {
+      const p = PRESETS[state.activePreset];
+      const isDefaultState = useDefaultCacheIfMatching && p &&
+        state.centroid === p.centroid &&
+        state.rolloff === p.rolloff &&
+        state.inharm === p.inharm &&
+        state.noise === p.noise &&
+        state.flatness === p.flatness &&
+        state.oddEven === p.oddEven &&
+        state.attack === p.attack &&
+        state.damping === p.damping &&
+        state.grain === p.grain &&
+        state.spread === p.spread;
+
+      if (isDefaultState && presetCache[state.activePreset]) {
+        currentRenderedBuffer = presetCache[state.activePreset].rendered;
+        currentWavDataUri = presetCache[state.activePreset].wavUri;
+      } else {
+        currentRenderedBuffer = synthesizePresetBuffer(state.activePreset, state);
+        currentWavDataUri = encodeStereoWavDataUri(currentRenderedBuffer.left, currentRenderedBuffer.right, SYNTH_SR);
+        if (isDefaultState) {
+          presetCache[state.activePreset] = { rendered: currentRenderedBuffer, wavUri: currentWavDataUri };
+        }
+      }
+      renderedState = { ...state };
+
+      const wavEl = document.getElementById('studioWavAudio');
+      if (wavEl) {
+        if (loadedWavUri !== currentWavDataUri) {
+          wavEl.src = currentWavDataUri;
+          loadedWavUri = currentWavDataUri;
+        }
+        wavEl.muted = false;
+        wavEl.volume = Math.min(1, Math.max(0, masterVolume * 0.88));
+      }
+    }
+
+    function toggleAudioSynth() {
+      if (!isPlayingAudio) {
+        userManuallyStopped = false;
+        startAudioSynth();
+      } else {
+        userManuallyStopped = true;
+        stopAudioSynth();
+      }
+    }
+
+    function startAudioSynth(useCache = true) {
+      isPlayingAudio = true;
+      playbackStartTime = performance.now();
+
+      ensureWebAudioBus();
+      renderAndLoadActiveSound(useCache);
+
+      // 1) Start HTML5 PCM WAV Audio Element FIRST inside user gesture (never muted)
+      const wavEl = document.getElementById('studioWavAudio');
+      if (wavEl) {
+        wavEl.muted = false;
+        wavEl.volume = Math.min(1, Math.max(0, masterVolume * 0.88));
+        try {
+          if (wavEl.readyState >= 1) wavEl.currentTime = 0;
+        } catch (e) {}
+        const playPromise = wavEl.play();
+        if (playPromise && playPromise.catch) {
+          playPromise.catch(() => {});
+        }
+      }
+
+      // 2) Start Real-Time WebAudio Interactive DSP Layer (sample-accurate feed-forward stereo engine)
+      playBufferInWebAudio(currentRenderedBuffer, 0);
+
+      syncAudioPlayerUI();
+      showToast("IRCAM 스튜디오 음원 재생 중", `현재 주법: ${PRESETS[state.activePreset].name}`);
+    }
+
+    function retriggerPresetAttack() {
+      userManuallyStopped = false;
+      startAudioSynth(false);
+    }
+
+    function onMasterVolumeChange(val) {
+      masterVolume = parseFloat(val);
+      const wavEl = document.getElementById('studioWavAudio');
+      if (wavEl) {
+        wavEl.muted = false;
+        wavEl.volume = Math.min(1, Math.max(0, masterVolume * 0.88));
+      }
+      if (webAudioNodes && audioCtx) {
+        webAudioNodes.webMasterGain.gain.value = masterVolume * 0.65;
+      }
+      if (!isPlayingAudio) {
+        userManuallyStopped = false;
+        startAudioSynth(true);
+      }
+    }
+
+    function downloadPresetWav() {
+      if (!currentWavDataUri) {
+        renderAndLoadActiveSound(true);
+      }
+      const fileName = `st_${state.activePreset}_${state.centroid}Hz.wav`;
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = currentWavDataUri;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        if (a.parentNode) document.body.removeChild(a);
+      }, 250);
+      showToast("16-bit Stereo .WAV 저장 완료", `${fileName} 음원 파일이 다운로드되었습니다.`);
+    }
+
+    function updateAudioSynthParams(skipDebouncedRegen = false) {
+      if (!isPlayingAudio) return;
+
+      // 1) Instantaneous 0ms WebAudio Delta Filter / Pitch / Section-B Modulation while dragging sliders
+      const ref = renderedState || PRESETS[state.activePreset];
+      if (webAudioNodes && audioCtx && ref) {
+        webAudioNodes.centroidFilter.frequency.value = Math.min(16000, Math.max(200, state.centroid));
+        webAudioNodes.centroidFilter.gain.value = ((state.oddEven - ref.oddEven) * 4.5) + ((state.centroid - ref.centroid) / 1400) * 3.5;
+        webAudioNodes.centroidFilter.Q.value = Math.min(10.0, 1.2 + (1.0 - state.flatness) * 3.5);
+
+        const targetRolloff = state.rolloff < ref.rolloff ? Math.max(800, state.rolloff) : Math.min(20000, 14000 + (state.rolloff - ref.rolloff));
+        webAudioNodes.rolloffFilter.frequency.value = Math.min(20000, Math.max(800, targetRolloff));
+
+        // B1/B2 Real-Time Transient & Grain Brightness Delta Shelf
+        webAudioNodes.transientFilter.gain.value = Math.max(-8.0, Math.min(8.0, (ref.attack - state.attack) * 0.14 + (ref.grain - state.grain) * 0.04));
+
+        // B3/B4 Real-Time Spatial Width & Modal Decay Delay
+        webAudioNodes.haasDelay.delayTime.value = Math.min(0.065, Math.max(0.002, 0.004 + (state.spread / 180) * 0.018 + (state.damping / 4.5) * 0.016));
+
+        webAudioNodes.webMasterGain.gain.value = masterVolume * 0.65;
+
+        if (currentBufferSource) {
+          const pitchRatio = Math.max(0.72, Math.min(1.42, 1.0 + ((state.centroid - ref.centroid) / 22000) + (state.inharm - ref.inharm) * 0.10));
+          currentBufferSource.playbackRate.value = pitchRatio;
+        }
+      }
+
+      // 2) Debounced Deep Physical-Modeling Buffer Re-Synthesis (updates all 10 descriptors in WAV & WebAudio)
+      if (!skipDebouncedRegen) {
+        const attackChanged = ref ? Math.abs(state.attack - ref.attack) >= 2 : false;
+        if (regenTimeoutId) clearTimeout(regenTimeoutId);
+        regenTimeoutId = setTimeout(() => {
+          if (!isPlayingAudio) return;
+          const elapsedSec = attackChanged ? 0 : (((performance.now() - playbackStartTime) / 1000) % SYNTH_DURATION);
+          if (attackChanged) playbackStartTime = performance.now();
+
+          renderAndLoadActiveSound(false);
+          playBufferInWebAudio(currentRenderedBuffer, elapsedSec);
+
+          const wavEl = document.getElementById('studioWavAudio');
+          if (wavEl) {
+            wavEl.muted = false;
+            wavEl.volume = Math.min(1, Math.max(0, masterVolume * 0.88));
+            try {
+              if (wavEl.readyState >= 1) wavEl.currentTime = elapsedSec;
+            } catch (e) {}
+            const p = wavEl.play();
+            if (p && p.catch) p.catch(() => {});
+          }
+        }, 140);
+      }
+    }
+
+    function stopAudioSynth() {
+      if (regenTimeoutId) {
+        clearTimeout(regenTimeoutId);
+        regenTimeoutId = null;
+      }
+      if (currentBufferSource) {
+        try {
+          currentBufferSource.stop();
+          currentBufferSource.disconnect();
+        } catch (e) {}
+        currentBufferSource = null;
+      }
+      const wavEl = document.getElementById('studioWavAudio');
+      if (wavEl) {
+        try { wavEl.pause(); } catch (e) {}
+      }
+      isPlayingAudio = false;
+      syncAudioPlayerUI();
+    }
+
+    // =========================================================================
+    // 3. INTERACTIVE 2D TIMBRE EMBEDDING PAD (CLAP / Librosa Space)
+    // =========================================================================
+    const xyCanvas = document.getElementById('xyPadCanvas');
+    const xyCtx = xyCanvas.getContext('2d');
+    let isDraggingXY = false;
+
+    function initXYPad() {
+      const handlePointer = (e) => {
+        const rect = xyCanvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        const normX = Math.min(0.98, Math.max(0.02, (clientX - rect.left) / rect.width));
+        const normY = Math.min(0.98, Math.max(0.02, 1.0 - (clientY - rect.top) / rect.height));
+
+        // Update sliders from 2D IRCAM / CLAP Pad
+        state.centroid = Math.round((400 + normX * 11600) / 20) * 20;
+        state.rolloff = Math.min(16000, Math.max(1500, Math.round((state.centroid * 1.65 + 1800) / 100) * 100));
+        state.noise = parseFloat(normY.toFixed(2));
+        state.flatness = parseFloat(Math.min(0.95, Math.max(0.05, (normX * 0.4 + normY * 0.6))).toFixed(2));
+        state.inharm = parseFloat(Math.min(0.95, Math.max(0.02, (normX * 0.55 + normY * 0.25))).toFixed(2));
+
+        document.getElementById('paramCentroid').value = state.centroid;
+        document.getElementById('paramRolloff').value = state.rolloff;
+        document.getElementById('paramNoise').value = state.noise;
+        document.getElementById('paramFlatness').value = state.flatness;
+        document.getElementById('paramInharm').value = state.inharm;
+
+        if (!isPlayingAudio) {
+          userManuallyStopped = false;
+          startAudioSynth(false);
+        }
+        onParamChange(true);
+        updateAudioSynthParams(false);
+      };
+
+      xyCanvas.addEventListener('mousedown', (e) => { isDraggingXY = true; handlePointer(e); });
+      window.addEventListener('mousemove', (e) => { if (isDraggingXY) handlePointer(e); });
+      window.addEventListener('mouseup', () => { isDraggingXY = false; });
+
+      xyCanvas.addEventListener('touchstart', (e) => { isDraggingXY = true; handlePointer(e); e.preventDefault(); }, { passive: false });
+      xyCanvas.addEventListener('touchmove', (e) => { if (isDraggingXY) handlePointer(e); e.preventDefault(); }, { passive: false });
+      xyCanvas.addEventListener('touchend', () => { isDraggingXY = false; });
+    }
+
+    function drawXYPad() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = xyCanvas.getBoundingClientRect();
+      if (xyCanvas.width !== rect.width * dpr || xyCanvas.height !== rect.height * dpr) {
+        xyCanvas.width = rect.width * dpr;
+        xyCanvas.height = rect.height * dpr;
+      }
+      xyCtx.save();
+      xyCtx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+
+      xyCtx.clearRect(0, 0, w, h);
+
+      // Subtle Grid
+      xyCtx.strokeStyle = 'rgba(148, 163, 184, 0.08)';
+      xyCtx.lineWidth = 1;
+      for (let x = w / 4; x < w; x += w / 4) {
+        xyCtx.beginPath(); xyCtx.moveTo(x, 0); xyCtx.lineTo(x, h); xyCtx.stroke();
+      }
+      for (let y = h / 4; y < h; y += h / 4) {
+        xyCtx.beginPath(); xyCtx.moveTo(0, y); xyCtx.lineTo(w, y); xyCtx.stroke();
+      }
+
+      // Draw 6 IRCAM Preset Anchor Clusters in Latent Space (Locked to exact PRESETS coordinates)
+      const anchors = [
+        { label: 'Ponticello', x: (PRESETS.ponticello.centroid - 400) / 11600, y: PRESETS.ponticello.noise, color: '#11cdef' },
+        { label: 'Aeolian', x: (PRESETS.breath.centroid - 400) / 11600, y: PRESETS.breath.noise, color: '#818cf8' },
+        { label: 'Multiphonics', x: (PRESETS.multiphonics.centroid - 400) / 11600, y: PRESETS.multiphonics.noise, color: '#2dce89' },
+        { label: 'Col Legno', x: (PRESETS.collegno.centroid - 400) / 11600, y: PRESETS.collegno.noise, color: '#fb6340' },
+        { label: 'Modalys Bell', x: (PRESETS.modalysbell.centroid - 400) / 11600, y: PRESETS.modalysbell.noise, color: '#c084fc' },
+        { label: 'SuperVP Freeze', x: (PRESETS.supervpfreeze.centroid - 400) / 11600, y: PRESETS.supervpfreeze.noise, color: '#38bdf8' }
+      ];
+
+      anchors.forEach(a => {
+        const ax = a.x * w;
+        const ay = (1 - a.y) * h;
+        xyCtx.fillStyle = a.color;
+        xyCtx.globalAlpha = 0.25;
+        xyCtx.beginPath(); xyCtx.arc(ax, ay, 9, 0, Math.PI * 2); xyCtx.fill();
+        xyCtx.globalAlpha = 0.8;
+        xyCtx.beginPath(); xyCtx.arc(ax, ay, 3, 0, Math.PI * 2); xyCtx.fill();
+        xyCtx.font = '9.5px "JetBrains Mono"';
+        xyCtx.fillText(a.label, ax + 5, ay + 3);
+      });
+
+      // Active Cursor Position
+      const curX = ((state.centroid - 400) / 11600) * w;
+      const curY = (1.0 - state.noise) * h;
+
+      xyCtx.globalAlpha = 1;
+      // Crosshair lines
+      xyCtx.strokeStyle = 'rgba(17, 205, 239, 0.35)';
+      xyCtx.setLineDash([3, 3]);
+      xyCtx.beginPath();
+      xyCtx.moveTo(curX, 0); xyCtx.lineTo(curX, h);
+      xyCtx.moveTo(0, curY); xyCtx.lineTo(w, curY);
+      xyCtx.stroke();
+      xyCtx.setLineDash([]);
+
+      // Glow Halo
+      const grad = xyCtx.createRadialGradient(curX, curY, 2, curX, curY, 22);
+      grad.addColorStop(0, 'rgba(17, 205, 239, 0.9)');
+      grad.addColorStop(1, 'rgba(17, 205, 239, 0)');
+      xyCtx.fillStyle = grad;
+      xyCtx.beginPath(); xyCtx.arc(curX, curY, 22, 0, Math.PI * 2); xyCtx.fill();
+
+      // Center Node
+      xyCtx.fillStyle = '#ffffff';
+      xyCtx.beginPath(); xyCtx.arc(curX, curY, 4.5, 0, Math.PI * 2); xyCtx.fill();
+
+      xyCtx.restore();
+    }
+
+    // =========================================================================
+    // 4. SPAT5 8-CH ARRAY, MAX 9 PATCHER UI & CENTERED FFT STAGE MONITOR
+    // =========================================================================
+    const spatCanvas = document.getElementById('spatSpeakerCanvas');
+    const spatCtx = spatCanvas ? spatCanvas.getContext('2d') : null;
+
+    const maxCanvas = document.getElementById('maxGraphCanvas');
+    const maxCtx = maxCanvas.getContext('2d');
+
+    const stageCanvas = document.getElementById('spectrumStageCanvas');
+    const stageCtx = stageCanvas.getContext('2d');
+
+    let peakHoldBins = new Float32Array(72);
+
+    function getLiveAudioMetrics() {
+      if (!isPlayingAudio || !currentRenderedBuffer) {
+        return { energy: 0, peakL: 0, peakR: 0, bins: null };
+      }
+      const wavEl = document.getElementById('studioWavAudio');
+      let playPosSec = 0;
+      if (wavEl && !wavEl.paused && wavEl.currentTime > 0) {
+        playPosSec = wavEl.currentTime % SYNTH_DURATION;
+      } else {
+        playPosSec = ((performance.now() - playbackStartTime) / 1000) % SYNTH_DURATION;
+      }
+      const startSample = Math.floor(playPosSec * SYNTH_SR);
+      const leftArr = currentRenderedBuffer.left;
+      const rightArr = currentRenderedBuffer.right;
+      const totalLen = leftArr.length;
+      let peakL = 0, peakR = 0, sumSq = 0;
+      const win = 512;
+      for (let i = 0; i < win; i++) {
+        const idx = (startSample + i) % totalLen;
+        const l = leftArr[idx];
+        const r = rightArr[idx];
+        const al = Math.abs(l);
+        const ar = Math.abs(r);
+        if (al > peakL) peakL = al;
+        if (ar > peakR) peakR = ar;
+        sumSq += l * l + r * r;
+      }
+      const rms = Math.sqrt(sumSq / (win * 2));
+      return {
+        energy: Math.min(1, rms * 2.4 * masterVolume),
+        peakL: Math.min(1, peakL * masterVolume),
+        peakR: Math.min(1, peakR * masterVolume),
+        playPosSec
+      };
+    }
+
+    // Standard IRCAM 8-Ch Octophonic Speaker Angles (deg from front center 0 deg, clockwise)
+    const OCTO_SPEAKERS = [
+      { id: 1, label: '1', deg: -22.5 },
+      { id: 2, label: '2', deg: 22.5 },
+      { id: 3, label: '3', deg: 67.5 },
+      { id: 4, label: '4', deg: 112.5 },
+      { id: 5, label: '5', deg: 157.5 },
+      { id: 6, label: '6', deg: -157.5 },
+      { id: 7, label: '7', deg: -112.5 },
+      { id: 8, label: '8', deg: -67.5 }
+    ];
+
+    function initSpatViewer() {
+      if (!spatCanvas) return;
+      let draggingSpat = false;
+      const applyPointer = (e) => {
+        const rect = spatCanvas.getBoundingClientRect();
+        const xNorm = Math.max(-1, Math.min(1, ((e.clientX - rect.left) / rect.width) * 2 - 1));
+        const yNorm = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+        state.azimuth = Math.round(xNorm * 120);
+        const newSpread = Math.round(10 + (1 - yNorm) * 170);
+        state.spread = Math.max(10, Math.min(180, newSpread));
+        const spreadSlider = document.getElementById('paramSpread');
+        if (spreadSlider) spreadSlider.value = state.spread;
+        const spreadLabel = document.getElementById('valSpread');
+        if (spreadLabel) spreadLabel.innerText = `${state.spread}°`;
+        onParamChange(false);
+      };
+      spatCanvas.addEventListener('mousedown', (e) => { draggingSpat = true; applyPointer(e); });
+      window.addEventListener('mousemove', (e) => { if (draggingSpat) applyPointer(e); });
+      window.addEventListener('mouseup', () => { draggingSpat = false; });
+    }
+
+    function drawSpatViewer() {
+      if (!spatCanvas || !spatCtx) return;
+      const dpr = window.devicePixelRatio || 1;
+      const rect = spatCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (spatCanvas.width !== rect.width * dpr || spatCanvas.height !== rect.height * dpr) {
+        spatCanvas.width = rect.width * dpr;
+        spatCanvas.height = rect.height * dpr;
+      }
+
+      spatCtx.save();
+      spatCtx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+      const cx = w * 0.5;
+      const cy = h * 0.52;
+      const ringR = Math.min(w, h) * 0.38;
+
+      spatCtx.clearRect(0, 0, w, h);
+
+      const metrics = getLiveAudioMetrics();
+      const livePulse = isPlayingAudio ? (0.45 + metrics.energy * 0.95) : 0.45;
+      const azBias = state.azimuth || 0;
+      const spreadNorm = state.spread / 180;
+      const dampNorm = Math.min(1, state.damping / 5.0);
+      const grainNorm = Math.min(1, state.grain / 250);
+
+      // 1. Concert Room Acoustic Field & Reverberant Damping Tail Halo
+      const roomGrad = spatCtx.createRadialGradient(cx, cy, ringR * 0.1, cx, cy, ringR * 1.45);
+      roomGrad.addColorStop(0, `rgba(17, 205, 239, ${0.14 * livePulse})`);
+      roomGrad.addColorStop(0.55, `rgba(94, 114, 228, ${(0.08 + dampNorm * 0.24) * livePulse})`);
+      roomGrad.addColorStop(1, 'rgba(7, 10, 18, 0)');
+      spatCtx.fillStyle = roomGrad;
+      spatCtx.fillRect(0, 0, w, h);
+
+      // Concentric distance rings + crosshairs
+      [0.38, 0.72, 1.0].forEach((scale, idx) => {
+        spatCtx.beginPath();
+        spatCtx.arc(cx, cy, ringR * scale, 0, Math.PI * 2);
+        spatCtx.strokeStyle = idx === 2 ? 'rgba(100, 116, 139, 0.35)' : 'rgba(100, 116, 139, 0.16)';
+        spatCtx.lineWidth = 1;
+        if (idx < 2) spatCtx.setLineDash([2, 3]);
+        spatCtx.stroke();
+        spatCtx.setLineDash([]);
+      });
+      spatCtx.strokeStyle = 'rgba(100, 116, 139, 0.16)';
+      spatCtx.beginPath();
+      spatCtx.moveTo(cx - ringR - 10, cy);
+      spatCtx.lineTo(cx + ringR + 10, cy);
+      spatCtx.moveTo(cx, cy - ringR - 8);
+      spatCtx.lineTo(cx, cy + ringR + 8);
+      spatCtx.stroke();
+
+      // 2. Reverberant Modal Damping Echo Ring (grows with modal_damping)
+      const tailRadius = ringR * (0.35 + dampNorm * 0.62);
+      spatCtx.beginPath();
+      spatCtx.arc(cx, cy, tailRadius, 0, Math.PI * 2);
+      spatCtx.strokeStyle = `rgba(167, 139, 250, ${0.18 + dampNorm * 0.45})`;
+      spatCtx.lineWidth = 1.5 + dampNorm * 3.0;
+      spatCtx.stroke();
+
+      // 3. Spat5 Acoustic Radiation Lobe (width reflects spat5_spread)
+      const centerAngleRad = (-90 + azBias) * (Math.PI / 180);
+      const halfSpreadRad = Math.max(0.1, spreadNorm * Math.PI * 0.96);
+      const lobeGrad = spatCtx.createRadialGradient(cx, cy, 2, cx, cy, ringR * 0.98);
+      lobeGrad.addColorStop(0, `rgba(16, 185, 129, ${0.42 * livePulse})`);
+      lobeGrad.addColorStop(0.65, `rgba(17, 205, 239, ${0.22 * livePulse})`);
+      lobeGrad.addColorStop(1, 'rgba(17, 205, 239, 0.03)');
+
+      spatCtx.beginPath();
+      spatCtx.moveTo(cx, cy);
+      spatCtx.arc(cx, cy, ringR * 0.96, centerAngleRad - halfSpreadRad, centerAngleRad + halfSpreadRad);
+      spatCtx.closePath();
+      spatCtx.fillStyle = lobeGrad;
+      spatCtx.fill();
+      spatCtx.strokeStyle = 'rgba(52, 211, 153, 0.55)';
+      spatCtx.lineWidth = 1.2;
+      spatCtx.stroke();
+
+      // 4. MuBu Granular Cloud Particles (size & scatter reflect mubu_grain_dur & attack)
+      const attackFactor = Math.max(0.2, 1.0 - Math.min(1, state.attack / 150) * 0.7);
+      const grainSpeed = 0.025 + (1 - grainNorm) * 0.065;
+      const numParticles = 14;
+      for (let i = 0; i < numParticles; i++) {
+        const seedAng = centerAngleRad + Math.sin(state.animPhase * grainSpeed + i * 1.9) * halfSpreadRad * 0.92;
+        const seedRad = ringR * (0.22 + 0.65 * (0.5 + 0.5 * Math.cos(state.animPhase * (grainSpeed * 0.8) + i * 2.7)));
+        const px = cx + Math.cos(seedAng) * seedRad;
+        const py = cy + Math.sin(seedAng) * seedRad;
+        const pSize = 1.2 + grainNorm * 2.4 + (isPlayingAudio ? metrics.energy * 1.4 : 0);
+        spatCtx.beginPath();
+        spatCtx.arc(px, py, pSize, 0, Math.PI * 2);
+        spatCtx.fillStyle = i % 2 === 0
+          ? `rgba(103, 232, 249, ${(0.35 + attackFactor * 0.55).toFixed(2)})`
+          : `rgba(52, 211, 153, ${(0.3 + dampNorm * 0.5).toFixed(2)})`;
+        spatCtx.fill();
+      }
+
+      // 5. 8-Channel Octophonic Speaker Nodes & Real-Time Channel Bars
+      OCTO_SPEAKERS.forEach((spk, idx) => {
+        const rad = (spk.deg - 90) * (Math.PI / 180);
+        const sx = cx + Math.cos(rad) * ringR;
+        const sy = cy + Math.sin(rad) * ringR;
+
+        // Wrapped angular distance from source azimuth center
+        let diff = Math.abs(((spk.deg - azBias + 540) % 360) - 180);
+        const sigma = 18 + spreadNorm * 145;
+        const vbapGain = Math.exp(-(diff * diff) / (2 * sigma * sigma));
+        const activeEnergy = Math.min(1, vbapGain * (isPlayingAudio ? (0.45 + metrics.energy * 0.95) : 0.72));
+
+        // Update mini 8-ch barmeter in UI
+        const barEl = document.getElementById(`spkBar${idx}`);
+        if (barEl) {
+          const pct = Math.max(8, Math.round(activeEnergy * 100));
+          barEl.style.height = `${pct}%`;
+          barEl.style.background = activeEnergy > 0.65 ? '#34d399' : (activeEnergy > 0.35 ? '#22d3ee' : '#475569');
+        }
+
+        // Glow ring for active speaker
+        if (activeEnergy > 0.25) {
+          spatCtx.beginPath();
+          spatCtx.arc(sx, sy, 6 + activeEnergy * 7, 0, Math.PI * 2);
+          spatCtx.fillStyle = `rgba(17, 205, 239, ${(activeEnergy * 0.35).toFixed(2)})`;
+          spatCtx.fill();
+        }
+
+        // Speaker cabinet triangle/rect facing listener center
+        spatCtx.save();
+        spatCtx.translate(sx, sy);
+        spatCtx.rotate(rad + Math.PI / 2);
+        spatCtx.fillStyle = activeEnergy > 0.5 ? '#10b981' : (activeEnergy > 0.2 ? '#38bdf8' : '#334155');
+        spatCtx.strokeStyle = activeEnergy > 0.3 ? '#e2e8f0' : '#64748b';
+        spatCtx.lineWidth = 1;
+        spatCtx.beginPath();
+        spatCtx.roundRect(-5, -4, 10, 8, 1.5);
+        spatCtx.fill();
+        spatCtx.stroke();
+        spatCtx.restore();
+
+        // Speaker index label outside ring
+        const lx = cx + Math.cos(rad) * (ringR + 13);
+        const ly = cy + Math.sin(rad) * (ringR + 13);
+        spatCtx.fillStyle = activeEnergy > 0.45 ? '#e2e8f0' : '#64748b';
+        spatCtx.font = '600 8px "JetBrains Mono"';
+        spatCtx.textAlign = 'center';
+        spatCtx.textBaseline = 'middle';
+        spatCtx.fillText(spk.label, lx, ly);
+      });
+
+      // Listener head marker at center
+      spatCtx.beginPath();
+      spatCtx.arc(cx, cy, 4.2, 0, Math.PI * 2);
+      spatCtx.fillStyle = '#f8fafc';
+      spatCtx.fill();
+      spatCtx.strokeStyle = '#11cdef';
+      spatCtx.lineWidth = 1.5;
+      spatCtx.stroke();
+
+      spatCtx.textAlign = 'left';
+      spatCtx.textBaseline = 'alphabetic';
+      spatCtx.restore();
+    }
+
+    function drawMax9PatchCord(ctx, x1, y1, x2, y2, kind, animPhase, isPlaying) {
+      const dy = Math.max(24, Math.abs(y2 - y1) * 0.55);
+      const cp1y = y1 + dy * 0.72;
+      const cp2y = y2 - dy * 0.72;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.bezierCurveTo(x1, cp1y, x2, cp2y, x2, y2);
+
+      if (kind === 'mc') {
+        // Authentic Max 9 MC braided multi-channel cable
+        ctx.strokeStyle = '#14171a';
+        ctx.lineWidth = 5.2;
+        ctx.stroke();
+
+        ctx.strokeStyle = isPlaying ? '#38bdf8' : '#5897b8';
+        ctx.lineWidth = 3.2;
+        ctx.stroke();
+
+        ctx.strokeStyle = '#e0f2fe';
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([5, 4]);
+        ctx.lineDashOffset = isPlaying ? -(animPhase * 0.9) : 0;
+        ctx.stroke();
+      } else if (kind === 'msp') {
+        // Authentic Max MSP black/green-yellow striped signal~ patch cord
+        ctx.strokeStyle = '#1a1c1f';
+        ctx.lineWidth = 3.0;
+        ctx.stroke();
+
+        ctx.strokeStyle = isPlaying ? '#b9e84a' : '#85a63a';
+        ctx.lineWidth = 2.0;
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = isPlaying ? -(animPhase * 1.1) : 0;
+        ctx.stroke();
+      } else {
+        // Authentic Max control/message cord
+        ctx.strokeStyle = '#737984';
+        ctx.lineWidth = 1.35;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawMaxGraph() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = maxCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (maxCanvas.width !== rect.width * dpr || maxCanvas.height !== rect.height * dpr) {
+        maxCanvas.width = rect.width * dpr;
+        maxCanvas.height = rect.height * dpr;
+      }
+      maxCtx.save();
+      maxCtx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+      const metrics = getLiveAudioMetrics();
+
+      // 1. Authentic Cycling '74 Max 9 Dark Patcher Canvas (#222427 + 20px dot grid)
+      maxCtx.fillStyle = '#222427';
+      maxCtx.fillRect(0, 0, w, h);
+
+      maxCtx.fillStyle = 'rgba(255, 255, 255, 0.045)';
+      for (let gx = 16; gx < w; gx += 20) {
+        for (let gy = 14; gy < h; gy += 20) {
+          maxCtx.fillRect(gx, gy, 1.1, 1.1);
+        }
+      }
+
+      // 2. Define Authentic Max 9 Object / Message / UI Nodes scaled cleanly to canvas width
+      const colR = Math.max(222, w * 0.53);
+      const nodes = [
+        { id: 'adc', x: 14, y: 12, w: 92, h: 24, text: 'adc~ 1 2', kind: 'msp', inlets: 0, outlets: 2 },
+        { id: 'desc', x: 120, y: 12, w: Math.min(240, w - 134), h: 24, text: `ircamdescriptor~ ${state.windowSize} 4`, kind: 'msp', inlets: 1, outlets: 2 },
+        { id: 'pfft', x: 14, y: 58, w: Math.min(202, colR - 22), h: 24, text: `pfft~ ${state.pfftPatch} ${state.windowSize}`, kind: 'msp', inlets: 2, outlets: 2 },
+        { id: 'msg1', x: colR, y: 58, w: Math.max(120, w - colR - 14), h: 22, text: `fc ${state.centroid}., inh ${state.inharm.toFixed(2)}`, kind: 'msg', inlets: 1, outlets: 1 },
+        { id: 'mubu', x: 14, y: 106, w: Math.min(202, colR - 22), h: 24, text: `mubu.granular~ 2 @grain ${state.grain}`, kind: 'msp', inlets: 2, outlets: 2 },
+        { id: 'modal', x: colR, y: 106, w: Math.max(120, w - colR - 14), h: 24, text: `modalys~ @damp ${state.damping.toFixed(2)}s`, kind: 'msp', inlets: 2, outlets: 2 },
+        { id: 'spat', x: 14, y: 156, w: Math.min(218, colR - 10), h: 26, text: `spat5.panoramix~ 2 8 @spread ${state.spread}`, kind: 'mc', inlets: 3, outlets: 2 },
+        { id: 'udp', x: colR + 24, y: 156, w: Math.max(115, w - colR - 38), h: 24, text: 'udpsend 127.0.0.1 7400', kind: 'ctrl', inlets: 1, outlets: 0 },
+        { id: 'livegain', x: 14, y: 204, w: 162, h: 40, text: 'live.gain~ @ch 8', kind: 'livegain', inlets: 2, outlets: 2 },
+        { id: 'mcdac', x: 14, y: 256, w: 170, h: 22, text: 'mc.dac~ 1 2 3 4 5 6 7 8', kind: 'mc', inlets: 2, outlets: 0 },
+        { id: 'comment', x: 196, y: 214, w: Math.max(110, w - 210), h: 58, text: `Max 9 Engine · SR 44.1kHz\nAtk ${state.attack}ms | Roll ${(state.rolloff/1000).toFixed(1)}kHz`, kind: 'comment', inlets: 0, outlets: 0 }
+      ];
+
+      // Patch cord routing table [fromIdx, outletIdx, toIdx, inletIdx, cordType]
+      const cords = [
+        [0, 0, 2, 0, 'msp'],
+        [0, 1, 1, 0, 'msp'],
+        [1, 0, 3, 0, 'ctrl'],
+        [1, 1, 7, 0, 'ctrl'],
+        [3, 0, 2, 1, 'ctrl'],
+        [3, 0, 5, 1, 'ctrl'],
+        [2, 0, 4, 0, 'msp'],
+        [5, 0, 4, 1, 'msp'],
+        [4, 0, 6, 0, 'msp'],
+        [5, 1, 6, 1, 'msp'],
+        [6, 0, 8, 0, 'mc'],
+        [8, 0, 9, 0, 'mc']
+      ];
+
+      const getPortX = (node, idx, total) => {
+        if (total <= 1) return node.x + 12;
+        const usableW = Math.max(24, node.w - 24);
+        return node.x + 12 + (idx / (total - 1)) * usableW;
+      };
+
+      // 3. Draw Patch Cords underneath object boxes (real Max Z-order)
+      cords.forEach(([fromIdx, outIdx, toIdx, inIdx, kind]) => {
+        const n1 = nodes[fromIdx];
+        const n2 = nodes[toIdx];
+        const x1 = getPortX(n1, outIdx, Math.max(1, n1.outlets));
+        const y1 = n1.y + n1.h;
+        const x2 = getPortX(n2, inIdx, Math.max(1, n2.inlets));
+        const y2 = n2.y;
+        drawMax9PatchCord(maxCtx, x1, y1, x2, y2, kind, state.animPhase, isPlayingAudio);
+      });
+
+      // 4. Draw Max 9 Object Boxes, Message Boxes & Live.Gain~ 8-ch Meter UI
+      nodes.forEach((n) => {
+        if (n.kind === 'comment') {
+          maxCtx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+          maxCtx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+          maxCtx.setLineDash([2, 2]);
+          maxCtx.lineWidth = 1;
+          maxCtx.beginPath();
+          maxCtx.roundRect(n.x, n.y, n.w, n.h, 3);
+          maxCtx.fill();
+          maxCtx.stroke();
+          maxCtx.setLineDash([]);
+
+          maxCtx.fillStyle = '#9ca3af';
+          maxCtx.font = '500 9.5px "JetBrains Mono"';
+          const lines = n.text.split('\n');
+          lines.forEach((line, li) => maxCtx.fillText(line, n.x + 8, n.y + 18 + li * 16));
+          maxCtx.fillStyle = '#38bdf8';
+          maxCtx.font = '600 9px "JetBrains Mono"';
+          maxCtx.fillText(`PRESET: ${PRESET_SHORT_LABELS[state.activePreset] || state.activePreset}`, n.x + 8, n.y + 49);
+          return;
+        }
+
+        if (n.kind === 'livegain') {
+          // Authentic Max live.gain~ multi-channel vertical fader housing
+          maxCtx.fillStyle = '#292c30';
+          maxCtx.strokeStyle = '#5a606a';
+          maxCtx.lineWidth = 1.1;
+          maxCtx.beginPath();
+          maxCtx.roundRect(n.x, n.y, n.w, n.h, 3);
+          maxCtx.fill();
+          maxCtx.stroke();
+
+          maxCtx.fillStyle = '#cbd5e1';
+          maxCtx.font = '600 9px "JetBrains Mono"';
+          maxCtx.fillText('live.gain~ (8ch)', n.x + 7, n.y + 12);
+
+          // 8 miniature vertical LED meter strips synced with live audio
+          for (let ch = 0; ch < 8; ch++) {
+            const bx = n.x + 8 + ch * 18;
+            const by = n.y + 17;
+            const bw = 12;
+            const bh = 18;
+            maxCtx.fillStyle = '#17191c';
+            maxCtx.fillRect(bx, by, bw, bh);
+            const chActivity = isPlayingAudio
+              ? Math.min(1, metrics.energy * (0.65 + 0.35 * Math.sin(state.animPhase * 0.25 + ch * 0.9)))
+              : 0.08;
+            const fillH = Math.max(2, Math.round(chActivity * bh));
+            maxCtx.fillStyle = chActivity > 0.8 ? '#f59e0b' : (chActivity > 0.25 ? '#4ade80' : '#334155');
+            maxCtx.fillRect(bx + 1, by + bh - fillH, bw - 2, fillH);
+          }
+        } else if (n.kind === 'msg') {
+          // Max 9 Message Box: rounded side caps & softer slate fill
+          maxCtx.fillStyle = '#2d3035';
+          maxCtx.strokeStyle = '#737985';
+          maxCtx.lineWidth = 1.1;
+          maxCtx.beginPath();
+          maxCtx.roundRect(n.x, n.y, n.w, n.h, 9);
+          maxCtx.fill();
+          maxCtx.stroke();
+
+          maxCtx.fillStyle = '#e5e7eb';
+          maxCtx.font = '500 10px "JetBrains Mono"';
+          maxCtx.fillText(n.text, n.x + 9, n.y + 14.5);
+        } else {
+          // Standard Max 9 Object Box: top & bottom structural rim bands + dark center
+          maxCtx.fillStyle = '#33363b';
+          maxCtx.strokeStyle = isPlayingAudio && (n.kind === 'msp' || n.kind === 'mc') ? '#6b7280' : '#585d66';
+          maxCtx.lineWidth = 1.15;
+          maxCtx.beginPath();
+          maxCtx.roundRect(n.x, n.y, n.w, n.h, 1.5);
+          maxCtx.fill();
+          maxCtx.stroke();
+
+          // Max 9 top & bottom border accent lines inside object box
+          maxCtx.fillStyle = n.kind === 'mc' ? '#38bdf8' : (n.kind === 'msp' ? '#525862' : '#4b5563');
+          maxCtx.fillRect(n.x + 1, n.y + 1, n.w - 2, 2.2);
+          maxCtx.fillRect(n.x + 1, n.y + n.h - 3.2, n.w - 2, 2.2);
+
+          maxCtx.fillStyle = '#f3f4f6';
+          maxCtx.font = '500 10px "JetBrains Mono"';
+          maxCtx.fillText(n.text, n.x + 7, n.y + 16);
+        }
+
+        // Render Inlets (top) & Outlets (bottom)
+        for (let i = 0; i < n.inlets; i++) {
+          const px = getPortX(n, i, n.inlets) - 3;
+          maxCtx.fillStyle = n.kind === 'mc' ? '#38bdf8' : (i === 0 && n.kind === 'msp' ? '#b9e84a' : '#8b929e');
+          maxCtx.fillRect(px, n.y - 1.5, 6, 3);
+        }
+        for (let o = 0; o < n.outlets; o++) {
+          const px = getPortX(n, o, n.outlets) - 3;
+          maxCtx.fillStyle = n.kind === 'mc' ? '#38bdf8' : (n.kind === 'msp' ? '#b9e84a' : '#8b929e');
+          maxCtx.fillRect(px, n.y + n.h - 1.5, 6, 3);
+        }
+      });
+
+      const cpuEl = document.getElementById('maxCpuReadout');
+      if (cpuEl) {
+        const estCpu = isPlayingAudio ? (12 + Math.round(metrics.energy * 14)) : 4;
+        cpuEl.innerText = `CPU ${estCpu}%`;
+      }
+
+      maxCtx.restore();
+    }
+
+    function drawStageAndSpectrum() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = stageCanvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (stageCanvas.width !== rect.width * dpr || stageCanvas.height !== rect.height * dpr) {
+        stageCanvas.width = rect.width * dpr;
+        stageCanvas.height = rect.height * dpr;
+      }
+      stageCtx.save();
+      stageCtx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+
+      stageCtx.clearRect(0, 0, w, h);
+
+      const metrics = getLiveAudioMetrics();
+      const padL = 32;
+      const padR = 12;
+      const padT = 16;
+      const padB = 20;
+      const plotW = Math.max(80, w - padL - padR);
+      const plotH = Math.max(80, h - padT - padB);
+      const liveScale = isPlayingAudio ? (0.72 + metrics.energy * 0.55) : 0.85;
+
+      // 1. DMX Stage Ambient Beam & Acoustic Gradient Backdrop
+      const dmxNorm = Math.min(1, (state.centroid / 12000) * 0.65 + state.noise * 0.35);
+      const coneGrad = stageCtx.createRadialGradient(w * 0.52, 0, 8, w * 0.52, h * 0.55, w * 0.65);
+      coneGrad.addColorStop(0, `rgba(17, 205, 239, ${(0.28 * dmxNorm).toFixed(3)})`);
+      coneGrad.addColorStop(0.5, `rgba(94, 114, 228, ${(0.16 * Math.max(0.2, state.noise)).toFixed(3)})`);
+      coneGrad.addColorStop(1, 'rgba(7, 10, 18, 0)');
+      stageCtx.fillStyle = coneGrad;
+      stageCtx.fillRect(0, 0, w, h);
+
+      // 2. Calibrated Studio dB & Frequency Analyzer Grid
+      const dbLines = [
+        { label: '0dB', yFrac: 0.05 },
+        { label: '-12', yFrac: 0.30 },
+        { label: '-24', yFrac: 0.55 },
+        { label: '-48', yFrac: 0.85 }
+      ];
+      stageCtx.font = '500 8.5px "JetBrains Mono"';
+      dbLines.forEach((d) => {
+        const gy = padT + d.yFrac * plotH;
+        stageCtx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+        stageCtx.lineWidth = 1;
+        stageCtx.beginPath();
+        stageCtx.moveTo(padL, gy);
+        stageCtx.lineTo(w - padR, gy);
+        stageCtx.stroke();
+        stageCtx.fillStyle = 'rgba(148, 163, 184, 0.65)';
+        stageCtx.fillText(d.label, 3, gy + 3);
+      });
+
+      const freqMarks = [
+        { label: '100', hz: 100 },
+        { label: '500', hz: 500 },
+        { label: '1k', hz: 1000 },
+        { label: '2.5k', hz: 2500 },
+        { label: '5k', hz: 5000 },
+        { label: '10k', hz: 10000 },
+        { label: '16k', hz: 16000 }
+      ];
+      const hzToX = (hz) => {
+        const minL = Math.log10(60);
+        const maxL = Math.log10(18000);
+        const norm = Math.max(0, Math.min(1, (Math.log10(Math.max(60, hz)) - minL) / (maxL - minL)));
+        return padL + norm * plotW;
+      };
+
+      freqMarks.forEach((fm) => {
+        const fx = hzToX(fm.hz);
+        stageCtx.strokeStyle = 'rgba(148, 163, 184, 0.12)';
+        stageCtx.beginPath();
+        stageCtx.moveTo(fx, padT);
+        stageCtx.lineTo(fx, padT + plotH);
+        stageCtx.stroke();
+        stageCtx.fillStyle = 'rgba(148, 163, 184, 0.72)';
+        stageCtx.fillText(fm.label, fx - 8, h - 6);
+      });
+
+      // 3. Harmonic Partial Needles (AudioSculpt / IRCAM Partial Visualization)
+      const baseHz = Math.max(65, state.centroid * 0.12);
+      const dampGlow = Math.min(1, state.damping / 5.0);
+      for (let p = 1; p <= 24; p++) {
+        const stretchedHz = baseHz * p * (1 + state.inharm * p * 0.025);
+        if (stretchedHz > 17500) break;
+        const px = hzToX(stretchedHz);
+        const isEven = (p % 2 === 0);
+        const oeWeight = isEven ? (0.55 + state.oddEven * 0.35) : (0.95 - state.oddEven * 0.32);
+        const centroidFocus = Math.exp(-Math.pow(Math.log2(Math.max(60, stretchedHz) / Math.max(200, state.centroid)), 2) / (0.8 + state.flatness * 2.2));
+        const rollGate = stretchedHz > state.rolloff ? Math.exp(-(stretchedHz - state.rolloff) / 1400) : 1.0;
+        const partialMag = Math.min(1, (0.28 + 0.72 * centroidFocus) * oeWeight * rollGate * liveScale * (1 / Math.pow(p, 0.18)));
+        const barH = Math.max(4, partialMag * plotH * 0.88);
+
+        const needleGrad = stageCtx.createLinearGradient(px, padT + plotH - barH, px, padT + plotH);
+        needleGrad.addColorStop(0, isEven ? '#a78bfa' : '#22d3ee');
+        needleGrad.addColorStop(1, 'rgba(17, 205, 239, 0.08)');
+        stageCtx.strokeStyle = needleGrad;
+        stageCtx.lineWidth = 2.0 + dampGlow * 1.2;
+        stageCtx.beginPath();
+        stageCtx.moveTo(px, padT + plotH);
+        stageCtx.lineTo(px, padT + plotH - barH);
+        stageCtx.stroke();
+      }
+
+      // 4. Smooth Real-Time FFT Spectral Envelope + Peak Hold Line
+      const numBins = 72;
+      const minLog = Math.log10(60);
+      const maxLog = Math.log10(18000);
+      const baselineY = padT + plotH;
+
+      stageCtx.beginPath();
+      stageCtx.moveTo(padL, baselineY);
+      const yPoints = [];
+
+      for (let i = 0; i < numBins; i++) {
+        const frac = i / (numBins - 1);
+        const hz = Math.pow(10, minLog + frac * (maxLog - minLog));
+        const distOct = Math.log2(hz / Math.max(200, state.centroid));
+        const bw = 0.65 + state.flatness * 2.1;
+        const env = Math.exp(-(distOct * distOct) / (2 * bw * bw));
+        const rollAtten = hz > state.rolloff ? Math.exp(-(hz - state.rolloff) / 1100) : 1.0;
+        const harmonicRipple = Math.sin(frac * 26 * (1 + state.inharm * 0.6) + state.animPhase * 0.12) * (1 - state.flatness) * 0.16;
+        const noiseFloor = (0.5 + 0.5 * Math.sin(i * 5.7 + state.animPhase * 0.38)) * state.noise * 0.24;
+
+        const normMag = Math.min(0.95, Math.max(0.03, (env * 0.72 + harmonicRipple + noiseFloor) * rollAtten * liveScale));
+        if (normMag > peakHoldBins[i]) {
+          peakHoldBins[i] = normMag;
+        } else {
+          peakHoldBins[i] = Math.max(normMag, peakHoldBins[i] * (0.985 - (1 - dampGlow) * 0.015));
+        }
+
+        const x = padL + frac * plotW;
+        const y = baselineY - normMag * plotH;
+        yPoints.push({ x, y, peakY: baselineY - peakHoldBins[i] * plotH });
+        stageCtx.lineTo(x, y);
+      }
+
+      stageCtx.lineTo(padL + plotW, baselineY);
+      stageCtx.closePath();
+
+      const fftGrad = stageCtx.createLinearGradient(0, padT, 0, baselineY);
+      fftGrad.addColorStop(0, 'rgba(17, 205, 239, 0.42)');
+      fftGrad.addColorStop(0.6, 'rgba(94, 114, 228, 0.16)');
+      fftGrad.addColorStop(1, 'rgba(15, 23, 42, 0.02)');
+      stageCtx.fillStyle = fftGrad;
+      stageCtx.fill();
+
+      stageCtx.strokeStyle = '#22d3ee';
+      stageCtx.lineWidth = 1.9;
+      stageCtx.stroke();
+
+      // Peak-hold contour line
+      stageCtx.beginPath();
+      yPoints.forEach((pt, idx) => {
+        if (idx === 0) stageCtx.moveTo(pt.x, pt.peakY);
+        else stageCtx.lineTo(pt.x, pt.peakY);
+      });
+      stageCtx.strokeStyle = 'rgba(244, 114, 182, 0.68)';
+      stageCtx.lineWidth = 1.1;
+      stageCtx.stroke();
+
+      // 5. Centroid & 95% Rolloff Markers
+      const centX = hzToX(state.centroid);
+      stageCtx.strokeStyle = 'rgba(52, 211, 153, 0.85)';
+      stageCtx.setLineDash([3, 3]);
+      stageCtx.beginPath();
+      stageCtx.moveTo(centX, padT);
+      stageCtx.lineTo(centX, baselineY);
+      stageCtx.stroke();
+      stageCtx.setLineDash([]);
+      stageCtx.fillStyle = '#34d399';
+      stageCtx.fillText(`Fc ${(state.centroid/1000).toFixed(1)}k`, Math.min(w - 64, centX + 4), padT + 10);
+
+      const rolloffX = hzToX(state.rolloff);
+      stageCtx.strokeStyle = 'rgba(167, 139, 250, 0.78)';
+      stageCtx.setLineDash([4, 3]);
+      stageCtx.beginPath();
+      stageCtx.moveTo(rolloffX, padT + 14);
+      stageCtx.lineTo(rolloffX, baselineY);
+      stageCtx.stroke();
+      stageCtx.setLineDash([]);
+      stageCtx.fillStyle = '#c4b5fd';
+      stageCtx.fillText(`Rolloff ${(state.rolloff/1000).toFixed(1)}k`, Math.max(padL + 4, Math.min(w - 78, rolloffX - 66)), padT + 22);
+
+      // 6. Compact Stage Azimuth Scope Inset (top-right inside monitor)
+      const insetX = w - 42;
+      const insetY = padT + 30;
+      const insetR = 20;
+      stageCtx.beginPath();
+      stageCtx.arc(insetX, insetY, insetR, 0, Math.PI * 2);
+      stageCtx.fillStyle = 'rgba(9, 13, 24, 0.82)';
+      stageCtx.fill();
+      stageCtx.strokeStyle = 'rgba(100, 116, 139, 0.45)';
+      stageCtx.lineWidth = 1;
+      stageCtx.stroke();
+
+      const spreadArc = (state.spread / 180) * Math.PI * 0.9;
+      stageCtx.beginPath();
+      stageCtx.moveTo(insetX, insetY);
+      stageCtx.arc(insetX, insetY, insetR - 2, -Math.PI / 2 - spreadArc, -Math.PI / 2 + spreadArc);
+      stageCtx.closePath();
+      stageCtx.fillStyle = 'rgba(45, 206, 137, 0.35)';
+      stageCtx.fill();
+
+      stageCtx.restore();
+    }
+
+    // =========================================================================
+    // 4B. 3D HOLOGRAPHIC SOUND-FIELD & MODAL MEMBRANE VISUALIZER
+    // =========================================================================
+    const holoCanvas = document.getElementById('holo3dCanvas');
+    const holoCtx = holoCanvas ? holoCanvas.getContext('2d') : null;
+    let holoYaw = -0.52;
+    let holoPitch = 0.46;
+    let isDraggingHolo = false;
+    let holoDragLastX = 0;
+    let holoDragLastY = 0;
+
+    function initHolo3dViewer() {
+      if (!holoCanvas) return;
+      const startDrag = (clientX, clientY) => {
+        isDraggingHolo = true;
+        holoDragLastX = clientX;
+        holoDragLastY = clientY;
+      };
+      const moveDrag = (clientX, clientY) => {
+        if (!isDraggingHolo) return;
+        const dx = clientX - holoDragLastX;
+        const dy = clientY - holoDragLastY;
+        holoDragLastX = clientX;
+        holoDragLastY = clientY;
+        holoYaw += dx * 0.0085;
+        holoPitch = Math.max(0.14, Math.min(1.18, holoPitch + dy * 0.0065));
+      };
+      const endDrag = () => { isDraggingHolo = false; };
+
+      holoCanvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
+      window.addEventListener('mousemove', e => moveDrag(e.clientX, e.clientY));
+      window.addEventListener('mouseup', endDrag);
+      holoCanvas.addEventListener('touchstart', e => {
+        if (e.touches[0]) startDrag(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      window.addEventListener('touchmove', e => {
+        if (e.touches[0]) moveDrag(e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      window.addEventListener('touchend', endDrag);
+    }
+
+    function project3DPoint(x, y, z, cx, cy, scale, yaw, pitch) {
+      const cosY = Math.cos(yaw);
+      const sinY = Math.sin(yaw);
+      const cosP = Math.cos(pitch);
+      const sinP = Math.sin(pitch);
+
+      // Rotate around Y (azimuth orbit), then X (camera elevation pitch)
+      const rx = x * cosY - z * sinY;
+      const rz = x * sinY + z * cosY;
+      const ry = y * cosP - rz * sinP;
+      const depth = y * sinP + rz * cosP;
+
+      const camDist = 3.55;
+      const perspective = camDist / Math.max(0.65, camDist - depth * 0.72);
+      return {
+        sx: cx + rx * scale * perspective,
+        sy: cy - ry * scale * perspective,
+        depth,
+        perspective
+      };
+    }
+
+    function drawHolo3dField() {
+      if (!holoCanvas || !holoCtx) return;
+      const rect = holoCanvas.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+      const dpr = window.devicePixelRatio || 1;
+      if (holoCanvas.width !== Math.round(rect.width * dpr) || holoCanvas.height !== Math.round(rect.height * dpr)) {
+        holoCanvas.width = Math.round(rect.width * dpr);
+        holoCanvas.height = Math.round(rect.height * dpr);
+      }
+
+      holoCtx.save();
+      holoCtx.scale(dpr, dpr);
+      const w = rect.width;
+      const h = rect.height;
+      holoCtx.clearRect(0, 0, w, h);
+
+      const metrics = getLiveAudioMetrics();
+      const spreadNorm = Math.max(0.05, Math.min(1, (state.spread - 10) / 170));
+      const centNorm = Math.max(0, Math.min(1, (state.centroid - 300) / 11700));
+      const rollNorm = Math.max(0, Math.min(1, (state.rolloff - 1200) / 14800));
+      const inharmNorm = Math.max(0, Math.min(1, state.inharm / 0.15));
+      const dampNorm = Math.max(0, Math.min(1, (state.damping - 0.2) / 4.3));
+      const grainNorm = Math.max(0, Math.min(1, (state.grain - 15) / 385));
+      const oddRatio = state.oddEven; // 0 = warm even (emerald/gold), 1 = odd hollow (fuchsia/sky)
+
+      const liveEnergy = isPlayingAudio ? (0.45 + metrics.energy * 0.95) : (0.38 + 0.08 * Math.sin(state.animPhase * 0.05));
+      const autoOrbit = isDraggingHolo ? 0 : Math.sin(state.animPhase * 0.008) * 0.14;
+      const yaw = holoYaw + autoOrbit;
+      const pitch = holoPitch;
+      const cx = w * 0.50;
+      const cy = h * 0.57;
+      const scale = Math.min(w, h) * 0.44;
+      const tAnim = state.animPhase * 0.055;
+
+      // Ambient radial holographic glow in center
+      const bgGlow = holoCtx.createRadialGradient(cx, cy - 12, 8, cx, cy, scale * 2.1);
+      bgGlow.addColorStop(0, oddRatio > 0.5 ? 'rgba(217, 70, 239, 0.16)' : 'rgba(17, 205, 239, 0.16)');
+      bgGlow.addColorStop(0.55, 'rgba(56, 189, 248, 0.06)');
+      bgGlow.addColorStop(1, 'rgba(4, 6, 11, 0)');
+      holoCtx.fillStyle = bgGlow;
+      holoCtx.fillRect(0, 0, w, h);
+
+      // 1. 3D Stage Floor Grid & Azimuth Base Circle
+      holoCtx.lineWidth = 0.8;
+      holoCtx.strokeStyle = 'rgba(56, 189, 248, 0.12)';
+      for (let gi = -2; gi <= 2; gi++) {
+        const gVal = gi * 0.55;
+        const pA = project3DPoint(-1.15, -0.32, gVal, cx, cy, scale, yaw, pitch);
+        const pB = project3DPoint(1.15, -0.32, gVal, cx, cy, scale, yaw, pitch);
+        holoCtx.beginPath();
+        holoCtx.moveTo(pA.sx, pA.sy);
+        holoCtx.lineTo(pB.sx, pB.sy);
+        holoCtx.stroke();
+
+        const pC = project3DPoint(gVal, -0.32, -1.15, cx, cy, scale, yaw, pitch);
+        const pD = project3DPoint(gVal, -0.32, 1.15, cx, cy, scale, yaw, pitch);
+        holoCtx.beginPath();
+        holoCtx.moveTo(pC.sx, pC.sy);
+        holoCtx.lineTo(pD.sx, pD.sy);
+        holoCtx.stroke();
+      }
+
+      // 2. 3D Modal Acoustic Membrane Mesh (18 x 14 wireframe + elevation glow)
+      const cols = 18;
+      const rows = 14;
+      const gridPts = [];
+      const spatialFreq = 2.4 + centNorm * 5.2;
+      const dampEnv = 0.45 + dampNorm * 0.55;
+      const turbAmp = state.noise * 0.16 + state.flatness * 0.10;
+      const modalTwist = inharmNorm * 1.45;
+
+      for (let r = 0; r < rows; r++) {
+        const rowArr = [];
+        const vNorm = r / (rows - 1);
+        const zPos = (vNorm - 0.5) * 1.95;
+        const zAtten = Math.exp(-vNorm * (1.55 - dampEnv * 1.05));
+        for (let c = 0; c < cols; c++) {
+          const uNorm = c / (cols - 1);
+          const xPos = (uNorm - 0.5) * 2.15;
+          const dist = Math.sqrt(xPos * xPos + zPos * zPos);
+
+          const fundamental = Math.sin(dist * spatialFreq - tAnim) * Math.cos(xPos * (1.8 + modalTwist) + tAnim * 0.45);
+          const harmonic2 = (oddRatio > 0.45 ? Math.sin(3 * xPos + tAnim * 1.3) : Math.cos(2 * xPos - tAnim)) * (0.28 + rollNorm * 0.25);
+          const chaos = turbAmp * Math.sin(xPos * 9.5 + zPos * 7.2 + tAnim * 2.3);
+          const yHeight = -0.18 + ((fundamental * 0.26 + harmonic2 * 0.14 + chaos) * zAtten * liveEnergy);
+
+          const proj = project3DPoint(xPos, yHeight, zPos, cx, cy, scale, yaw, pitch);
+          proj.heightNorm = Math.max(0, Math.min(1, (yHeight + 0.45) / 0.72));
+          proj.vNorm = vNorm;
+          rowArr.push(proj);
+        }
+        gridPts.push(rowArr);
+      }
+
+      // Draw mesh ribbons back-to-front by row depth impression
+      for (let r = 0; r < rows; r++) {
+        holoCtx.beginPath();
+        for (let c = 0; c < cols; c++) {
+          const pt = gridPts[r][c];
+          if (c === 0) holoCtx.moveTo(pt.sx, pt.sy);
+          else holoCtx.lineTo(pt.sx, pt.sy);
+        }
+        const alpha = 0.28 + (1 - r / rows) * 0.48;
+        const hue = Math.round(192 + oddRatio * 115 - r * 3);
+        holoCtx.strokeStyle = `hsla(${hue}, 92%, 64%, ${alpha.toFixed(3)})`;
+        holoCtx.lineWidth = r % 3 === 0 ? 1.45 : 0.9;
+        holoCtx.stroke();
+      }
+      for (let c = 0; c < cols; c += 2) {
+        holoCtx.beginPath();
+        for (let r = 0; r < rows; r++) {
+          const pt = gridPts[r][c];
+          if (r === 0) holoCtx.moveTo(pt.sx, pt.sy);
+          else holoCtx.lineTo(pt.sx, pt.sy);
+        }
+        holoCtx.strokeStyle = 'rgba(129, 140, 248, 0.22)';
+        holoCtx.lineWidth = 0.75;
+        holoCtx.stroke();
+      }
+
+      // 3. 3D Ambisonic Upper Dome Wireframe Rings & 8-Ch Surround Array
+      const domeRadius = 0.92 + spreadNorm * 0.24;
+      [0.05, 0.42, 0.72].forEach((elevY, ringIdx) => {
+        const ringR = domeRadius * Math.sqrt(Math.max(0.05, 1 - elevY * elevY));
+        holoCtx.beginPath();
+        for (let s = 0; s <= 40; s++) {
+          const ang = (s / 40) * Math.PI * 2;
+          const p = project3DPoint(Math.cos(ang) * ringR, elevY * 0.78, Math.sin(ang) * ringR, cx, cy, scale, yaw, pitch);
+          if (s === 0) holoCtx.moveTo(p.sx, p.sy);
+          else holoCtx.lineTo(p.sx, p.sy);
+        }
+        holoCtx.strokeStyle = ringIdx === 0 ? 'rgba(45, 206, 137, 0.34)' : 'rgba(217, 70, 239, 0.24)';
+        holoCtx.lineWidth = ringIdx === 0 ? 1.2 : 0.85;
+        holoCtx.stroke();
+      });
+
+      // 8 Virtual Speakers on equatorial horizon
+      for (let sp = 0; sp < 8; sp++) {
+        const ang = (sp / 8) * Math.PI * 2 - Math.PI / 2;
+        const pSp = project3DPoint(Math.cos(ang) * domeRadius, 0.04, Math.sin(ang) * domeRadius, cx, cy, scale, yaw, pitch);
+        const pulse = isPlayingAudio ? (0.4 + 0.6 * Math.abs(Math.sin(tAnim * 1.4 + sp * 0.8))) : 0.35;
+        holoCtx.beginPath();
+        holoCtx.arc(pSp.sx, pSp.sy, 2.5 + pulse * 1.6, 0, Math.PI * 2);
+        holoCtx.fillStyle = `rgba(45, 206, 137, ${(0.35 + pulse * 0.55).toFixed(2)})`;
+        holoCtx.fill();
+      }
+
+      // 4. Orbiting 3D Granular & Elevation Sound Sources (reacting to spread, grain, centroid)
+      const orbCount = Math.max(4, Math.round(4 + grainNorm * 5));
+      for (let k = 0; k < orbCount; k++) {
+        const phase = tAnim * (0.42 + (k % 3) * 0.14) + k * ((Math.PI * 2) / orbCount);
+        const azAng = phase * (0.45 + spreadNorm * 0.75);
+        const orbR = (0.32 + spreadNorm * 0.62) * (0.85 + 0.15 * Math.sin(phase * 1.7));
+        const orbY = 0.22 + spreadNorm * 0.48 * Math.abs(Math.sin(phase * 0.85 + k));
+        const ox = Math.cos(azAng) * orbR;
+        const oz = Math.sin(azAng) * orbR;
+
+        const pOrb = project3DPoint(ox, orbY, oz, cx, cy, scale, yaw, pitch);
+        const pFloor = project3DPoint(ox, -0.18, oz, cx, cy, scale, yaw, pitch);
+
+        // Vertical drop line onto modal surface
+        holoCtx.beginPath();
+        holoCtx.moveTo(pFloor.sx, pFloor.sy);
+        holoCtx.lineTo(pOrb.sx, pOrb.sy);
+        holoCtx.strokeStyle = 'rgba(232, 121, 249, 0.35)';
+        holoCtx.lineWidth = 0.9;
+        holoCtx.stroke();
+
+        // Glowing 3D orb
+        const rOrb = (3.0 + grainNorm * 2.2) * pOrb.perspective * (isPlayingAudio ? (0.9 + metrics.energy * 0.5) : 0.9);
+        const orbGrad = holoCtx.createRadialGradient(pOrb.sx, pOrb.sy, 0.5, pOrb.sx, pOrb.sy, rOrb * 2.6);
+        orbGrad.addColorStop(0, '#ffffff');
+        orbGrad.addColorStop(0.35, k % 2 === 0 ? 'rgba(56, 189, 248, 0.95)' : 'rgba(232, 121, 249, 0.95)');
+        orbGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        holoCtx.fillStyle = orbGrad;
+        holoCtx.beginPath();
+        holoCtx.arc(pOrb.sx, pOrb.sy, rOrb * 2.6, 0, Math.PI * 2);
+        holoCtx.fill();
+      }
+
+      holoCtx.restore();
+    }
+
+    // =========================================================================
+    // 5. AUTHENTIC MAX 8 (.maxpat JSON) & CODE GENERATORS
+    // =========================================================================
+    function generateMaxPatJSON() {
+      const dmxVal = Math.min(255, Math.round((state.centroid / 12000) * 170 + state.noise * 85));
+      const filterQ = Math.min(18.0, (1.0 - state.flatness) * 12 + 1.2 + state.inharm * 2.5).toFixed(2);
+
+      const patcherObj = {
+        "patcher": {
+          "fileversion": 1,
+          "appversion": { "major": 8, "minor": 6, "revision": 2, "architecture": "x64", "modernui": 1 },
+          "classnamespace": "box",
+          "rect": [120.0, 90.0, 960.0, 680.0],
+          "bglocked": 0,
+          "openinpresentation": 0,
+          "default_fontsize": 12.0,
+          "default_fontname": "Arial",
+          "description": `Sound Transformer Auto-Generated IRCAM Patcher for ${PRESETS[state.activePreset].name}`,
+          "boxes": [
+            {
+              "box": {
+                "id": "obj-1",
+                "maxclass": "newobj",
+                "text": "adc~ 1 2",
+                "numinlets": 1,
+                "numoutlets": 2,
+                "outlettype": ["signal", "signal"],
+                "patching_rect": [45.0, 40.0, 62.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-2",
+                "maxclass": "newobj",
+                "text": `ircamdescriptor~ ${state.windowSize} 4 @descriptors SpectralCentroid SpectralRolloff Inharmonicity Noisiness SpectralFlatness OddToEvenRatio LogAttackTime`,
+                "numinlets": 1,
+                "numoutlets": 2,
+                "outlettype": ["list", ""],
+                "patching_rect": [135.0, 92.0, 680.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-3",
+                "maxclass": "newobj",
+                "text": `pfft~ ${state.pfftPatch} ${state.windowSize} 4`,
+                "numinlets": 2,
+                "numoutlets": 1,
+                "outlettype": ["signal"],
+                "patching_rect": [45.0, 155.0, 255.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-4",
+                "maxclass": "message",
+                "text": `centroid ${state.centroid}., rolloff95 ${state.rolloff}., inharm ${state.inharm}, noisiness ${state.noise}, flatness ${state.flatness}, oddeven ${state.oddEven}, q ${filterQ}`,
+                "numinlets": 2,
+                "numoutlets": 1,
+                "outlettype": [""],
+                "patching_rect": [315.0, 155.0, 510.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-5",
+                "maxclass": "newobj",
+                "text": `mubu.granular~ 2 st_buf @grainsize ${state.grain}. @attack ${state.attack}. @damping ${state.damping} @overlap 4.0`,
+                "numinlets": 1,
+                "numoutlets": 2,
+                "outlettype": ["signal", "signal"],
+                "patching_rect": [45.0, 225.0, 495.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-6",
+                "maxclass": "newobj",
+                "text": `spat5.panoramix~ @inputs 2 @outputs 8 @spread ${state.spread}`,
+                "numinlets": 2,
+                "numoutlets": 8,
+                "outlettype": ["signal", "signal", "signal", "signal", "signal", "signal", "signal", "signal"],
+                "patching_rect": [45.0, 295.0, 320.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-7",
+                "maxclass": "message",
+                "text": `/stage/dmx/master ${dmxVal}, /stage/shader/disp ${state.noise}, /stage/spat/spread ${state.spread}`,
+                "numinlets": 2,
+                "numoutlets": 1,
+                "outlettype": [""],
+                "patching_rect": [410.0, 295.0, 390.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-8",
+                "maxclass": "newobj",
+                "text": "udpsend 127.0.0.1 7400",
+                "numinlets": 1,
+                "numoutlets": 0,
+                "patching_rect": [410.0, 345.0, 145.0, 22.0]
+              }
+            },
+            {
+              "box": {
+                "id": "obj-9",
+                "maxclass": "newobj",
+                "text": "pattrstorage st_state @savemode 2",
+                "numinlets": 1,
+                "numoutlets": 1,
+                "outlettype": [""],
+                "patching_rect": [45.0, 345.0, 220.0, 22.0]
+              }
+            }
+          ],
+          "lines": [
+            { "patchline": { "source": ["obj-1", 0], "destination": ["obj-2", 0] } },
+            { "patchline": { "source": ["obj-1", 0], "destination": ["obj-3", 0] } },
+            { "patchline": { "source": ["obj-4", 0], "destination": ["obj-3", 1] } },
+            { "patchline": { "source": ["obj-3", 0], "destination": ["obj-5", 0] } },
+            { "patchline": { "source": ["obj-5", 0], "destination": ["obj-6", 0] } },
+            { "patchline": { "source": ["obj-7", 0], "destination": ["obj-8", 0] } }
+          ]
+        }
+      };
+
+      return JSON.stringify(patcherObj, null, 2);
+    }
+
+    function generateThispatcherScript() {
+      const dmxVal = Math.min(255, Math.round((state.centroid / 12000) * 170 + state.noise * 85));
+      return `// ============================================================================
+// Sound Transformer :: Max 8 [thispatcher] + IRCAM Descriptors Auto-Wiring
+// Profile: ${PRESETS[state.activePreset].name}
+// ============================================================================
+
+; max clearpatcher
+; script newdefault adc_in 45 40 adc~ 1 2
+; script newdefault ircam_ana 135 92 ircamdescriptor~ ${state.windowSize} 4
+; script newdefault pfft_proc 45 155 pfft~ ${state.pfftPatch} ${state.windowSize} 4
+; script newdefault mubu_gran 45 225 mubu.granular~ 2 st_buf @grainsize ${state.grain}. @attack ${state.attack}.
+; script newdefault modal_res 310 225 modalys~ @damping ${state.damping} @inharm ${state.inharm}
+; script newdefault spat_pan 45 295 spat5.panoramix~ @inputs 2 @outputs 8 @spread ${state.spread}
+; script newdefault osc_out 410 345 udpsend 127.0.0.1 7400
+
+// Automated Signal & Control Cord Routing
+; script connect adc_in 0 ircam_ana 0
+; script connect adc_in 0 pfft_proc 0
+; script connect pfft_proc 0 mubu_gran 0
+; script connect mubu_gran 0 spat_pan 0
+
+// Inject Calculated IRCAM Acoustic Descriptors
+; pfft_msg centroid ${state.centroid}.
+; pfft_msg rolloff95 ${state.rolloff}.
+; pfft_msg inharmonicity ${state.inharm}
+; pfft_msg noisiness ${state.noise}
+; pfft_msg flatness ${state.flatness}
+; pfft_msg tristimulus_oddeven ${state.oddEven}
+; osc_out /stage/dmx/universe1 ${dmxVal}
+; osc_out /stage/video/displacement ${state.noise}`;
+    }
+
+    function generateLibrosaPattrCode() {
+      const filterQ = Math.min(18.0, (1.0 - state.flatness) * 12 + 1.2 + state.inharm * 2.5).toFixed(2);
+      return `# ============================================================================
+# Sound Transformer :: IRCAM / Librosa Feature Extractor -> Max OSC Bridge
+# ============================================================================
+import librosa
+import numpy as np
+from pythonosc import udp_client
+
+def extract_and_bridge_to_max(audio_path: str, osc_port: int = 7400):
+    y, sr = librosa.load(audio_path, sr=48000)
+    
+    # Context & Safety Guardrail: Clamp Filter Q <= 18.0, Master Gain <= 0.0 dBFS
+    safe_filter_q = min(18.0, float(${filterQ}))
+    safe_master_gain_db = min(0.0, -1.5)
+    
+    # Extracted 10-Dim IRCAM Acoustic Descriptor Vector (${PRESETS[state.activePreset].name})
+    feature_vector = {
+        "preset_id": "${state.activePreset}",
+        "spectral_centroid_hz": ${state.centroid},
+        "spectral_rolloff_95_hz": ${state.rolloff},
+        "inharmonicity_coeff": ${state.inharm},
+        "harmonic_to_noise_nhr": ${state.noise},
+        "spectral_flatness_wiener": ${state.flatness},
+        "tristimulus_odd_even_ratio": ${state.oddEven},
+        "log_attack_time_ms": ${state.attack},
+        "modal_damping_factor": ${state.damping},
+        "mubu_grain_duration_ms": ${state.grain},
+        "spat5_azimuth_spread_deg": ${state.spread},
+        "derived_filter_q": safe_filter_q,
+        "guardrail_gain_dbfs": safe_master_gain_db
+    }
+    
+    # Dispatch directly to Max/MSP [udpreceive 7400] -> [pattrstorage st_state]
+    client = udp_client.SimpleUDPClient("127.0.0.1", osc_port)
+    client.send_message("/st/ircam/descriptors", list(feature_vector.values())[1:])
+    return feature_vector`;
+    }
+
+    function generateEngineerCueSheet() {
+      const dmxVal = Math.min(255, Math.round((state.centroid / 12000) * 170 + state.noise * 85));
+      const dmxPct = Math.round((dmxVal / 255) * 100);
+      const filterQ = Math.min(18.0, (1.0 - state.flatness) * 12 + 1.2 + state.inharm * 2.5).toFixed(2);
+      const reverbDecay = (0.65 + state.damping * 1.15).toFixed(2);
+
+      return `===============================================================================
+SOUND TRANSFORMER // IRCAM MULTI-STAGE QUANTITATIVE CUE SPECIFICATION
+Target Profile : ${PRESETS[state.activePreset].name}
+Safety Status  : GUARDRAIL VERIFIED (Master Gain <= 0.0 dBFS | Q <= 18.0 Clamped)
+===============================================================================
+
+1. IRCAM SPECTRAL & MODAL DESCRIPTORS (ircamdescriptor~ · SuperVP · Modalys)
+   • FFT Subpatch       : [pfft~ ${state.pfftPatch} ${state.windowSize} 4]
+   • Spectral Centroid  : ${state.centroid.toLocaleString()} Hz | 95% Rolloff : ${state.rolloff.toLocaleString()} Hz
+   • Inharmonicity      : ${state.inharm.toFixed(2)} | Odd/Even Tristimulus : ${state.oddEven.toFixed(1)} : 1
+   • Noise / Flatness   : NHR ${state.noise.toFixed(2)} | Wiener Flatness ${state.flatness.toFixed(2)} (Guardrail Q: ${filterQ})
+   • Temporal & Modal   : Log-Attack ${state.attack} ms | Modal Damping ${state.damping.toFixed(2)} (RT60 ${reverbDecay} s)
+   • MuBu & Spat5       : Grain ${state.grain} ms | 8-Ch Ring Azimuth Spread ±${state.spread}°
+
+2. LIGHTING CONTROL (MA3 / DMX512 Art-Net Universe 1)
+   • OSC Trigger Addr   : /stage/dmx/front_wash
+   • Dimmer Intensity   : ${dmxVal} / 255 (${dmxPct}%) — Mapped from Centroid & Rolloff
+   • Strobe / Flicker   : ${(state.noise * 18).toFixed(1)} Hz — Slew-Rate Limited (Anti-Surge)
+
+3. MEDIA & VIDEO SHADER (TouchDesigner / GLSL)
+   • OSC Trigger Addr   : /stage/shader/vertex_displace
+   • Mesh Displacement  : ${state.noise.toFixed(2)} | Inharmonic Twist : ${state.inharm.toFixed(2)}
+   • Chromatic Shift    : ${(state.flatness * 0.85).toFixed(3)} rad`;
+    }
+
+    function renderActiveCode() {
+      const viewport = document.getElementById('codeViewport');
+      const filename = document.getElementById('codeFilename');
+      const desc = document.getElementById('codeTabDesc');
+
+      if (state.activeTab === 'maxpat') {
+        filename.innerText = `st_${state.activePreset}_bridge.maxpat`;
+        desc.innerHTML = `<span>Max 8: File → New From Clipboard (Cmd+Opt+N)</span><span class="text-[10px] text-sky-400">Max 8 JSON</span>`;
+        viewport.innerText = generateMaxPatJSON();
+      } else if (state.activeTab === 'maxscript') {
+        filename.innerText = `st_thispatcher_autowire.txt`;
+        desc.innerHTML = `<span>Auto-wiring script for Max [thispatcher] object</span><span class="text-[10px] text-emerald-400">Max Script</span>`;
+        viewport.innerText = generateThispatcherScript();
+      } else if (state.activeTab === 'pattr') {
+        filename.innerText = `st_librosa_osc_bridge.py`;
+        desc.innerHTML = `<span>IRCAM 10-Dim Descriptor -> Max [pattrstorage] UDP bridge</span><span class="text-[10px] text-amber-400">Python + OSC</span>`;
+        viewport.innerText = generateLibrosaPattrCode();
+      } else if (state.activeTab === 'cuesheet') {
+        filename.innerText = `st_stage_cue_spec.txt`;
+        desc.innerHTML = `<span>Quantitative stage cue sheet (Audio / DMX512 / Shader)</span><span class="text-[10px] text-sky-400">Cue Spec</span>`;
+        viewport.innerText = generateEngineerCueSheet();
+      }
+    }
+
+    // =========================================================================
+    // 6. UI INTERACTION HANDLERS (ALL 6 PRESETS & 10 IRCAM DESCRIPTORS)
+    // =========================================================================
+    function selectPreset(key) {
+      state.activePreset = key;
+      const p = PRESETS[key];
+      state.centroid = p.centroid;
+      state.rolloff = p.rolloff;
+      state.inharm = p.inharm;
+      state.noise = p.noise;
+      state.flatness = p.flatness;
+      state.oddEven = p.oddEven;
+      state.attack = p.attack;
+      state.damping = p.damping;
+      state.grain = p.grain;
+      state.spread = p.spread;
+      state.pfftPatch = p.pfftPatch;
+      state.windowSize = p.windowSize;
+
+      // Update all 10 slider DOM elements
+      document.getElementById('paramCentroid').value = state.centroid;
+      document.getElementById('paramRolloff').value = state.rolloff;
+      document.getElementById('paramInharm').value = state.inharm;
+      document.getElementById('paramNoise').value = state.noise;
+      document.getElementById('paramFlatness').value = state.flatness;
+      document.getElementById('paramOddEven').value = state.oddEven;
+      document.getElementById('paramAttack').value = state.attack;
+      document.getElementById('paramDamping').value = state.damping;
+      document.getElementById('paramGrain').value = state.grain;
+      document.getElementById('paramSpread').value = state.spread;
+
+      // Update Preset Button Highlighting
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.className = 'preset-btn text-left p-2 rounded border border-zinc-800/90 bg-[#0b0e14] hover:border-zinc-700 transition flex flex-col justify-between cursor-pointer';
+      });
+      const activeBtn = document.getElementById(`btn-${key}`);
+      if (activeBtn) {
+        activeBtn.className = 'preset-btn active text-left p-2 rounded border border-sky-500/60 bg-sky-500/10 transition flex flex-col justify-between cursor-pointer';
+      }
+
+      userManuallyStopped = false;
+      onParamChange(true);
+      startAudioSynth(true);
+    }
+
+    function onParamChange(fromInit = false) {
+      state.centroid = parseInt(document.getElementById('paramCentroid').value, 10);
+      state.rolloff = parseInt(document.getElementById('paramRolloff').value, 10);
+      state.inharm = parseFloat(document.getElementById('paramInharm').value);
+      state.noise = parseFloat(document.getElementById('paramNoise').value);
+      state.flatness = parseFloat(document.getElementById('paramFlatness').value);
+      state.oddEven = parseFloat(document.getElementById('paramOddEven').value);
+      state.attack = parseInt(document.getElementById('paramAttack').value, 10);
+      state.damping = parseFloat(document.getElementById('paramDamping').value);
+      state.grain = parseInt(document.getElementById('paramGrain').value, 10);
+      state.spread = parseInt(document.getElementById('paramSpread').value, 10);
+
+      // Update Left Labels for all 10 IRCAM Descriptors
+      document.getElementById('valCentroid').innerText = `${state.centroid.toLocaleString()} Hz`;
+      document.getElementById('valRolloff').innerText = `${state.rolloff.toLocaleString()} Hz`;
+      document.getElementById('valInharm').innerText = state.inharm.toFixed(2);
+      document.getElementById('valNoise').innerText = state.noise.toFixed(2);
+      document.getElementById('valFlatness').innerText = state.flatness.toFixed(2);
+      document.getElementById('valOddEven').innerText = `${state.oddEven >= 0 ? '+' : ''}${state.oddEven.toFixed(2)}`;
+      document.getElementById('valAttack').innerText = `${state.attack} ms`;
+      document.getElementById('valDamping').innerText = `${state.damping.toFixed(2)} s`;
+      document.getElementById('valGrain').innerText = `${state.grain} ms`;
+      document.getElementById('valSpread').innerText = `${state.spread}°`;
+
+      const normX = ((state.centroid - 400) / 11600).toFixed(2);
+      document.getElementById('xyCoordReadout').innerText = `[X: ${normX}, Y: ${state.noise.toFixed(2)}]`;
+
+      // Update Center Stage Quantitative Readouts
+      const dmxVal = Math.min(255, Math.round((state.centroid / 12000) * 170 + state.noise * 85));
+      const dmxPct = Math.round((dmxVal / 255) * 100);
+      const filterQ = Math.min(18.0, (1.0 - state.flatness) * 12 + 1.2 + state.inharm * 2.5).toFixed(2);
+
+      document.getElementById('hudPeakFreq').innerText = `${(state.centroid / 1000).toFixed(2)} kHz`;
+      const hudRollEl = document.getElementById('hudRolloff');
+      if (hudRollEl) hudRollEl.innerText = `${(state.rolloff / 1000).toFixed(1)} kHz`;
+      document.getElementById('hudDmx').innerText = `${dmxVal} / 255`;
+      document.getElementById('cueFilterQ').innerText = filterQ;
+      document.getElementById('cueDmxVal').innerText = `${dmxVal} (${dmxPct}%)`;
+      document.getElementById('cueShader').innerText = `${state.noise.toFixed(2)} disp`;
+      document.getElementById('cueAzimuth').innerText = `±${state.spread}.0°`;
+
+      const spatReadoutEl = document.getElementById('spatViewerReadout');
+      if (spatReadoutEl) {
+        const az = state.azimuth || 0;
+        const azStr = az === 0 ? '0°' : (az > 0 ? `+${az}°` : `${az}°`);
+        spatReadoutEl.innerText = `±${state.spread}° · Az ${azStr} · G ${state.grain}ms`;
+      }
+
+      const maxTabTitle = document.getElementById('maxWindowTabTitle');
+      if (maxTabTitle) maxTabTitle.innerText = `${state.pfftPatch}.maxpat [Max 9]`;
+
+      const maxStatusRight = document.getElementById('maxStatusRight');
+      if (maxStatusRight) maxStatusRight.innerText = `SR 44.1kHz · Atk ${state.attack}ms · Damp ${state.damping.toFixed(1)}s`;
+
+      const guardrailEl = document.getElementById('guardrailReadout');
+      if (guardrailEl) {
+        guardrailEl.innerText = `Gain ≤ 0.0 dBFS | Q ${filterQ} / 18.0 Max`;
+      }
+
+      const spreadNormHud = Math.max(0, Math.min(1, (state.spread - 10) / 170));
+      const centNormHud = Math.max(0, Math.min(1, (state.centroid - 300) / 11700));
+      const elevEl = document.getElementById('holoElevReadout');
+      if (elevEl) elevEl.innerText = `ELV +${(spreadNormHud * 48).toFixed(1)}°`;
+      const depthEl = document.getElementById('holoDepthReadout');
+      if (depthEl) depthEl.innerText = `3D DEPTH ${Math.round(32 + spreadNormHud * 68)}%`;
+      const itdCueEl = document.getElementById('holoBinauralCue');
+      if (itdCueEl) itdCueEl.innerText = `ITD ${(spreadNormHud * 0.63).toFixed(2)}ms`;
+      const hoaOrderEl = document.getElementById('holoModalOrder');
+      if (hoaOrderEl) hoaOrderEl.innerText = state.spread >= 120 ? '5th Order' : (state.spread >= 60 ? '3rd Order' : '1st Order');
+      const sheenEl = document.getElementById('holoSheenDb');
+      if (sheenEl) sheenEl.innerText = `+${(1.4 + centNormHud * 2.8).toFixed(1)} dB`;
+
+      if (!fromInit) {
+        if (!isPlayingAudio && !userManuallyStopped) {
+          startAudioSynth(false);
+        } else {
+          updateAudioSynthParams(false);
+        }
+      }
+      renderActiveCode();
+    }
+
+    function switchCodeTab(tab) {
+      state.activeTab = tab;
+      ['maxpat', 'maxscript', 'pattr', 'cuesheet'].forEach(t => {
+        const el = document.getElementById(`tab-${t}`);
+        if (t === tab) {
+          el.className = 'code-tab py-1 px-1 rounded bg-zinc-800 text-sky-400 font-semibold transition text-center';
+        } else {
+          el.className = 'code-tab py-1 px-1 rounded text-zinc-400 hover:text-zinc-200 transition text-center';
+        }
+      });
+      renderActiveCode();
+    }
+
+    function copyCodeToClipboard() {
+      const codeText = document.getElementById('codeViewport').innerText;
+      const textarea = document.createElement('textarea');
+      textarea.value = codeText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast("코드 복사 완료", "Max 8의 'New From Clipboard' 또는 스크립트 창에 바로 붙여넣으세요.");
+      } catch (err) {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(codeText);
+          showToast("코드 복사 완료", "클립보드에 정상 복사되었습니다.");
+        }
+      }
+      document.body.removeChild(textarea);
+    }
+
+    function downloadMaxPatch() {
+      const jsonContent = generateMaxPatJSON();
+      const fileName = `st_${state.activePreset}_bridge.maxpat`;
+
+      // 1. 클립보드에 자동 복사 (Max 8 'New From Clipboard' 즉시 지원)
+      const tempArea = document.createElement('textarea');
+      tempArea.value = jsonContent;
+      document.body.appendChild(tempArea);
+      tempArea.select();
+      try {
+        document.execCommand('copy');
+      } catch (e) {}
+      document.body.removeChild(tempArea);
+
+      // 2. Data URI 및 Blob 다운로드 동시 처리
+      const dataUri = 'data:application/octet-stream;charset=utf-8,' + encodeURIComponent(jsonContent);
+      const directLink = document.getElementById('directDataUriLink');
+      if (directLink) {
+        directLink.setAttribute('href', dataUri);
+        directLink.setAttribute('download', fileName);
+      }
+
+      try {
+        const blob = new Blob([jsonContent], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 300);
+      } catch (err) {}
+
+      // 3. 샌드박스 환경에서도 100% 패치를 확인/복사/저장할 수 있는 전용 모달 오픈
+      document.getElementById('exportModalFilename').innerText = fileName;
+      document.getElementById('exportModalTextarea').value = jsonContent;
+      const modal = document.getElementById('maxExportModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      showToast(".maxpat 생성 및 클립보드 자동 복사 완료", `${fileName} 데이터가 준비되었습니다.`);
+    }
+
+    function closeExportModal() {
+      const modal = document.getElementById('maxExportModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function copyExportTextarea() {
+      const textarea = document.getElementById('exportModalTextarea');
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast("Max 8 패치 복사 완료", "Max 8에서 File -> New From Clipboard를 실행하세요.");
+      } catch (e) {}
+    }
+
+    let toastTimeout = null;
+    function showToast(title, msg) {
+      const toast = document.getElementById('argonToast');
+      document.getElementById('toastTitle').innerText = title;
+      document.getElementById('toastMsg').innerText = msg;
+      toast.classList.remove('opacity-0', 'translate-y-3');
+      toast.classList.add('opacity-100', 'translate-y-0');
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove('opacity-100', 'translate-y-0');
+        toast.classList.add('opacity-0', 'translate-y-3');
+      }, 3200);
+    }
+
+    function updateLiveStereoMeter() {
+      if (!isPlayingAudio || !currentRenderedBuffer) return;
+      const wavEl = document.getElementById('studioWavAudio');
+      let playPosSec = 0;
+      if (wavEl && !wavEl.paused && wavEl.currentTime > 0) {
+        playPosSec = wavEl.currentTime % SYNTH_DURATION;
+      } else {
+        playPosSec = ((performance.now() - playbackStartTime) / 1000) % SYNTH_DURATION;
+      }
+
+      const startSample = Math.floor(playPosSec * SYNTH_SR);
+      const windowLen = 512;
+      const leftArr = currentRenderedBuffer.left;
+      const rightArr = currentRenderedBuffer.right;
+      const totalLen = leftArr.length;
+
+      let peakL = 0, peakR = 0;
+      for (let i = 0; i < windowLen; i++) {
+        const idx = (startSample + i) % totalLen;
+        const aL = Math.abs(leftArr[idx]);
+        const aR = Math.abs(rightArr[idx]);
+        if (aL > peakL) peakL = aL;
+        if (aR > peakR) peakR = aR;
+      }
+
+      peakL *= masterVolume;
+      peakR *= masterVolume;
+
+      const pctL = Math.min(100, Math.max(4, Math.round(Math.pow(peakL, 0.55) * 108)));
+      const pctR = Math.min(100, Math.max(4, Math.round(Math.pow(peakR, 0.55) * 108)));
+
+      const barL = document.getElementById('meterBarL');
+      const barR = document.getElementById('meterBarR');
+      const dbText = document.getElementById('meterDbText');
+      if (barL) barL.style.width = `${pctL}%`;
+      if (barR) barR.style.width = `${pctR}%`;
+      if (dbText) {
+        const maxPeak = Math.max(0.001, peakL, peakR);
+        const dbVal = Math.min(0.0, 20 * Math.log10(maxPeak));
+        dbText.innerText = `${dbVal.toFixed(1)} dB`;
+        dbText.className = 'mono text-[9.5px] text-emerald-400 font-semibold w-14 text-right';
+      }
+    }
+
+    // =========================================================================
+    // 7. MAIN ANIMATION LOOP & PRE-CACHE INITIALIZATION
+    // =========================================================================
+    function animate() {
+      state.animPhase += 1;
+      drawXYPad();
+      drawSpatViewer();
+      drawMaxGraph();
+      drawStageAndSpectrum();
+      drawHolo3dField();
+      updateLiveStereoMeter();
+      requestAnimationFrame(animate);
+    }
+
+    window.onload = function() {
+      initXYPad();
+      initSpatViewer();
+      initHolo3dViewer();
+      onParamChange(true);
+      // Pre-render initial preset immediately so first click has 0ms latency
+      renderAndLoadActiveSound(true);
+      syncAudioPlayerUI();
+      animate();
+
+      // Background pre-cache remaining 5 IRCAM presets gently without blocking playback UI
+      const remainingPresets = ['breath', 'multiphonics', 'collegno', 'modalysbell', 'supervpfreeze'];
+      remainingPresets.forEach((key, idx) => {
+        setTimeout(() => {
+          if (!presetCache[key] && !isPlayingAudio) {
+            const p = PRESETS[key];
+            const rendered = synthesizePresetBuffer(key, p);
+            const wavUri = encodeStereoWavDataUri(rendered.left, rendered.right, SYNTH_SR);
+            presetCache[key] = { rendered, wavUri };
+          }
+        }, 450 * (idx + 1));
+      });
+    };
+  </script>
+</body>
+</html>
